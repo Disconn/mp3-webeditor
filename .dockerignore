@@ -1,0 +1,13 @@
+node_modules
+npm-debug.log*
+dist
+.git
+.cursor
+.env
+data/settings.json
+data/meta-cache.json
+data/cover-cache
+server/tmp
+*.log
+agent-transcripts
+terminals

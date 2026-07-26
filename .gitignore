@@ -1,0 +1,9 @@
+node_modules
+dist
+.env
+*.log
+.DS_Store
+server/tmp
+data/settings.json
+data/meta-cache.json
+data/cover-cache/

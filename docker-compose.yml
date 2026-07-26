@@ -1,0 +1,25 @@
+services:
+  mp3-webeditor:
+    build: .
+    image: mp3-webeditor:latest
+    container_name: mp3-webeditor
+    ports:
+      - "${PUBLISH_PORT:-3001}:3001"
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+      HOST: 0.0.0.0
+      AUDIO_DIR: /audio
+      FFMPEG_PATH: ffmpeg
+      SESSION_SECRET: ${SESSION_SECRET:-please-change-this-session-secret}
+      AUTH_USER: ${AUTH_USER:-admin}
+      AUTH_PASS: ${AUTH_PASS:-secret}
+    volumes:
+      # Host music library → container /audio (default root in Settings)
+      - ${AUDIO_HOST_PATH:-./audio}:/audio
+      # Persist users, roots, caches
+      - mp3-webeditor-data:/app/data
+    restart: unless-stopped
+
+volumes:
+  mp3-webeditor-data:
