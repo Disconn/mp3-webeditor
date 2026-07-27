@@ -9,14 +9,14 @@ services:
       NODE_ENV: production
       PORT: 3001
       HOST: 0.0.0.0
-      AUDIO_DIR: /audio
+      AUDIO_DIR: /mnt/audio
       FFMPEG_PATH: ffmpeg
       SESSION_SECRET: ${SESSION_SECRET:-please-change-this-session-secret}
       AUTH_USER: ${AUTH_USER:-admin}
       AUTH_PASS: ${AUTH_PASS:-secret}
     volumes:
-      # Host music library → container /audio (default root in Settings)
-      - ${AUDIO_HOST_PATH:-./audio}:/audio
+      # Host music library → container /mnt/audio (default root in Settings)
+      - ${AUDIO_HOST_PATH:-./audio}:/mnt/audio
       # Persist users, roots, caches
       - mp3-webeditor-data:/app/data
     restart: unless-stopped

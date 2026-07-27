@@ -23,7 +23,7 @@ RUN apt-get update \
 ENV NODE_ENV=production \
     PORT=3001 \
     HOST=0.0.0.0 \
-    AUDIO_DIR=/audio \
+    AUDIO_DIR=/mnt/audio \
     FFMPEG_PATH=ffmpeg \
     SESSION_SECRET=change-me-in-production \
     AUTH_USER=admin \
@@ -35,8 +35,8 @@ RUN npm ci --omit=dev && npm cache clean --force
 COPY server ./server
 COPY --from=build /app/dist ./dist
 
-RUN mkdir -p /audio /app/data /app/server/tmp \
-  && chown -R node:node /app /audio
+RUN mkdir -p /mnt/audio /app/data /app/server/tmp \
+  && chown -R node:node /app /mnt/audio
 
 USER node
 
