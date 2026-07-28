@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../api';
 
 const MIN_CROP = 24;
+const MAX_UPLOAD_BYTES = 20 * 1024 * 1024;
 
 function clamp(n, lo, hi) {
   return Math.min(hi, Math.max(lo, n));
@@ -10,20 +11,25 @@ function clamp(n, lo, hi) {
 /**
  * Lightbox to view + crop album art via four corner handles.
  * Crop rect is in natural image pixels; display maps via scale/offset.
+ * The image can come from the file's existing embedded cover, a local
+ * upload (file picker / drag&drop / paste), or a URL fetched server-side.
  */
-export default function CoverLightbox({ path, bust, fileName, onClose, onSaved }) {
+export default function CoverLightbox({ path, bust, fileName, hasCover = true, onClose, onSaved }) {
   const stageRef = useRef(null);
   const imgRef = useRef(null);
   const dragRef = useRef(null);
+  const fileInputRef = useRef(null);
 
+  const [src, setSrc] = useState(() => (hasCover ? api.coverUrl(path, bust || Date.now()) : ''));
   const [imgSize, setImgSize] = useState({ w: 0, h: 0 });
   const [layout, setLayout] = useState({ scale: 1, ox: 0, oy: 0, dw: 0, dh: 0 });
   const [crop, setCrop] = useState(null); // { x, y, w, h } natural px
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [loaded, setLoaded] = useState(false);
-
-  const src = api.coverUrl(path, bust || Date.now());
+  const [urlInput, setUrlInput] = useState('');
+  const [urlLoading, setUrlLoading] = useState(false);
+  const [dragOver, setDragOver] = useState(false);
 
   const measure = useCallback(() => {
     const stage = stageRef.current;
@@ -70,6 +76,57 @@ export default function CoverLightbox({ path, bust, fileName, onClose, onSaved }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [busy, onClose]);
+
+  function loadFromDataUrl(dataUrl) {
+    setError('');
+    setLoaded(false);
+    setImgSize({ w: 0, h: 0 });
+    setCrop(null);
+    setSrc(dataUrl);
+  }
+
+  function handleFile(file) {
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      setError('Datei ist kein Bild');
+      return;
+    }
+    if (file.size > MAX_UPLOAD_BYTES) {
+      setError('Bild zu groß (max 20MB)');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => loadFromDataUrl(reader.result);
+    reader.onerror = () => setError('Datei konnte nicht gelesen werden');
+    reader.readAsDataURL(file);
+  }
+
+  // Paste image from clipboard anywhere while the lightbox is open.
+  useEffect(() => {
+    function onPaste(e) {
+      const item = Array.from(e.clipboardData?.items || []).find((it) => it.type.startsWith('image/'));
+      if (!item) return;
+      const file = item.getAsFile();
+      if (file) handleFile(file);
+    }
+    window.addEventListener('paste', onPaste);
+    return () => window.removeEventListener('paste', onPaste);
+  }, []);
+
+  async function loadFromUrl() {
+    const url = urlInput.trim();
+    if (!url || urlLoading || busy) return;
+    setUrlLoading(true);
+    setError('');
+    try {
+      const res = await api.coverFromUrl(url);
+      loadFromDataUrl(res.cover.dataUrl);
+    } catch (err) {
+      setError(err.message || 'Bild konnte nicht von der URL geladen werden');
+    } finally {
+      setUrlLoading(false);
+    }
+  }
 
   function toNatural(clientX, clientY) {
     const rect = stageRef.current.getBoundingClientRect();
@@ -199,41 +256,109 @@ export default function CoverLightbox({ path, bust, fileName, onClose, onSaved }
           </button>
         </header>
 
+        <div className="cover-lightbox-sources">
+          <button
+            type="button"
+            className="btn secondary tiny"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={busy}
+          >
+            Bild hochladen
+          </button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            style={{ display: 'none' }}
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              handleFile(file);
+              e.target.value = '';
+            }}
+          />
+          <form
+            className="cover-url-form"
+            onSubmit={(e) => {
+              e.preventDefault();
+              loadFromUrl();
+            }}
+          >
+            <input
+              type="url"
+              inputMode="url"
+              placeholder="Bild-URL einfügen…"
+              value={urlInput}
+              onChange={(e) => setUrlInput(e.target.value)}
+              disabled={urlLoading || busy}
+            />
+            <button
+              type="submit"
+              className="btn secondary tiny"
+              disabled={urlLoading || busy || !urlInput.trim()}
+            >
+              {urlLoading ? 'Lädt…' : 'Von URL laden'}
+            </button>
+          </form>
+          <span className="muted small cover-source-hint">oder Bild hierher ziehen / einfügen (Strg+V)</span>
+        </div>
+
         <div
-          className="cover-lightbox-stage"
+          className={`cover-lightbox-stage${dragOver ? ' drag-over' : ''}`}
           ref={stageRef}
           onPointerMove={onPointerMove}
           onPointerUp={onPointerUp}
           onPointerCancel={onPointerUp}
+          onDragOver={(e) => {
+            e.preventDefault();
+            if (!busy) setDragOver(true);
+          }}
+          onDragLeave={() => setDragOver(false)}
+          onDrop={(e) => {
+            e.preventDefault();
+            setDragOver(false);
+            if (busy) return;
+            const file = e.dataTransfer?.files?.[0];
+            if (file) handleFile(file);
+          }}
         >
-          {!loaded && (
-            <div className="cover-lightbox-loading">
-              <span className="spinner" />
-              <span className="muted">Cover laden…</span>
+          {!src && (
+            <div className="cover-lightbox-empty">
+              <p>Kein Bild geladen</p>
+              <p className="muted small">Hochladen, von einer URL laden oder hierher ziehen</p>
             </div>
           )}
-          <img
-            ref={imgRef}
-            className="cover-lightbox-img"
-            src={src}
-            alt=""
-            draggable={false}
-            style={{
-              width: layout.dw || undefined,
-              height: layout.dh || undefined,
-              left: layout.ox,
-              top: layout.oy,
-              opacity: loaded ? 1 : 0,
-            }}
-            onLoad={() => {
-              setLoaded(true);
-              measure();
-            }}
-            onError={() => {
-              setLoaded(true);
-              setError('Cover konnte nicht geladen werden');
-            }}
-          />
+
+          {src && !loaded && (
+            <div className="cover-lightbox-loading">
+              <span className="spinner" />
+              <span className="muted">Bild laden…</span>
+            </div>
+          )}
+
+          {src && (
+            <img
+              ref={imgRef}
+              className="cover-lightbox-img"
+              src={src}
+              alt=""
+              draggable={false}
+              style={{
+                width: layout.dw || undefined,
+                height: layout.dh || undefined,
+                left: layout.ox,
+                top: layout.oy,
+                opacity: loaded ? 1 : 0,
+              }}
+              onLoad={() => {
+                setLoaded(true);
+                measure();
+              }}
+              onError={() => {
+                setLoaded(true);
+                setError('Bild konnte nicht geladen werden');
+              }}
+            />
+          )}
 
           {loaded && cropStyle && (
             <div className="cover-crop" style={cropStyle}>
@@ -246,6 +371,12 @@ export default function CoverLightbox({ path, bust, fileName, onClose, onSaved }
                   onPointerDown={(e) => onHandleDown(handle, e)}
                 />
               ))}
+            </div>
+          )}
+
+          {dragOver && (
+            <div className="cover-lightbox-drophint">
+              <p>Bild hier ablegen</p>
             </div>
           )}
         </div>

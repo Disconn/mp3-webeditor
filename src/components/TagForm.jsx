@@ -47,7 +47,9 @@ export default function TagForm({ fields, initialTags, cover, format, streamUrl,
               <img src={cover.dataUrl} alt="Cover" />
             </button>
           ) : (
-            <div className="cover-empty">Kein Cover</div>
+            <button type="button" className="cover-box-btn" title="Cover hinzufügen" onClick={onOpenCover}>
+              <div className="cover-empty">Kein Cover</div>
+            </button>
           )}
         </div>
         <div className="meta-stats">

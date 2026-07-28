@@ -51,6 +51,13 @@ export const api = {
       headers: JSON_HEADERS,
       body: JSON.stringify({ path }),
     }).then(parse),
+  coverFromUrl: (url) =>
+    fetch('/api/cover/from-url', {
+      method: 'POST',
+      credentials: 'include',
+      headers: JSON_HEADERS,
+      body: JSON.stringify({ url }),
+    }).then(parse),
   saveCover: (path, dataUrl) =>
     fetch('/api/cover', {
       method: 'PUT',

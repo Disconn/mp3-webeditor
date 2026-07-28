@@ -1,10 +1,105 @@
 import fs from 'fs';
 import https from 'https';
 import http from 'http';
+import dns from 'dns/promises';
+import net from 'net';
 import NodeID3 from 'node-id3';
 import { resolveAudioPath } from '../paths.js';
 import { refreshMetaCacheFor } from './tags.js';
 import { getCachedCover, setCachedCover, invalidateCover } from '../coverCache.js';
+
+const MAX_URL_IMAGE_BYTES = 15 * 1024 * 1024;
+
+function sniffImageMime(buf) {
+  if (buf.length >= 3 && buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) return 'image/jpeg';
+  if (
+    buf.length >= 8 &&
+    buf.slice(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))
+  ) {
+    return 'image/png';
+  }
+  if (buf.length >= 6 && /^GIF8[79]a$/.test(buf.slice(0, 6).toString('latin1'))) return 'image/gif';
+  if (
+    buf.length >= 12 &&
+    buf.slice(0, 4).toString('ascii') === 'RIFF' &&
+    buf.slice(8, 12).toString('ascii') === 'WEBP'
+  ) {
+    return 'image/webp';
+  }
+  if (buf.length >= 2 && buf[0] === 0x42 && buf[1] === 0x4d) return 'image/bmp';
+  return null;
+}
+
+function isPrivateAddress(ip) {
+  if (net.isIPv4(ip)) {
+    const [a, b] = ip.split('.').map(Number);
+    if (a === 10 || a === 127 || a === 0) return true;
+    if (a === 169 && b === 254) return true;
+    if (a === 172 && b >= 16 && b <= 31) return true;
+    if (a === 192 && b === 168) return true;
+    return false;
+  }
+  if (net.isIPv6(ip)) {
+    const low = ip.toLowerCase();
+    if (low === '::1') return true;
+    if (low.startsWith('fe80:') || low.startsWith('fc') || low.startsWith('fd')) return true;
+    return false;
+  }
+  return true; // unresolvable/unknown shape -> treat as unsafe
+}
+
+/** Fetch an arbitrary user-supplied image URL, guarding against SSRF to internal hosts. */
+async function fetchImageBuffer(url, redirectsLeft = 4) {
+  const parsed = new URL(url);
+  if (!/^https?:$/.test(parsed.protocol)) throw new Error('Nur http/https-URLs werden unterstützt');
+
+  const { address } = await dns.lookup(parsed.hostname);
+  if (isPrivateAddress(address)) {
+    throw new Error('URL zeigt auf eine private/interne Adresse — nicht erlaubt');
+  }
+
+  return new Promise((resolve, reject) => {
+    const lib = parsed.protocol === 'https:' ? https : http;
+    const req = lib.get(
+      url,
+      {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (compatible; mp3-webeditor/1.0)',
+          Accept: 'image/*,*/*',
+        },
+      },
+      (res) => {
+        if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location && redirectsLeft > 0) {
+          res.resume();
+          const next = new URL(res.headers.location, url).toString();
+          return fetchImageBuffer(next, redirectsLeft - 1).then(resolve, reject);
+        }
+        if (res.statusCode !== 200) {
+          res.resume();
+          return reject(new Error(`HTTP ${res.statusCode} für ${url}`));
+        }
+        const chunks = [];
+        let total = 0;
+        res.on('data', (c) => {
+          total += c.length;
+          if (total > MAX_URL_IMAGE_BYTES) {
+            res.destroy();
+            reject(new Error('Bild zu groß (max 15MB)'));
+            return;
+          }
+          chunks.push(c);
+        });
+        res.on('end', () => resolve(Buffer.concat(chunks)));
+        res.on('error', reject);
+      }
+    );
+    req.on('error', reject);
+    req.setTimeout(20000, () => {
+      req.destroy();
+      reject(new Error('Timeout beim Laden des Bildes'));
+    });
+  });
+}
 
 function extractYoutubeId(input) {
   if (!input || typeof input !== 'string') return null;
@@ -193,6 +288,34 @@ export async function streamCover(req, res) {
     res.setHeader('X-Cover-Cache', 'MISS');
     res.setHeader('Content-Length', buffer.length);
     res.end(buffer);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+}
+
+/**
+ * Fetch an arbitrary image URL server-side and hand it back as a data URL, so the
+ * client can preview/crop it without hitting canvas cross-origin taint issues.
+ * Body: { url }
+ */
+export async function fetchCoverFromUrl(req, res) {
+  try {
+    const { url } = req.body || {};
+    if (!url || typeof url !== 'string') return res.status(400).json({ error: 'url required' });
+
+    let buffer;
+    try {
+      buffer = await fetchImageBuffer(url.trim());
+    } catch (err) {
+      return res.status(400).json({ error: err.message });
+    }
+
+    const mime = sniffImageMime(buffer);
+    if (!mime) {
+      return res.status(400).json({ error: 'URL ist kein unterstütztes Bildformat (JPEG/PNG/GIF/WebP/BMP)' });
+    }
+
+    res.json({ ok: true, cover: { mime, dataUrl: `data:${mime};base64,${buffer.toString('base64')}` } });
   } catch (err) {
     res.status(400).json({ error: err.message });
   }

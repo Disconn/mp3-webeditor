@@ -28,7 +28,7 @@ import {
   clearCacheHandler,
   cacheStatsHandler,
 } from './routes/tags.js';
-import { fetchYtCover, streamCover, saveCover } from './routes/cover.js';
+import { fetchYtCover, fetchCoverFromUrl, streamCover, saveCover } from './routes/cover.js';
 import { cropMp3, getDuration, streamAudio } from './routes/crop.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -94,6 +94,7 @@ app.delete('/api/cache', requireAuth, clearCacheHandler);
 app.get('/api/tags', requireAuth, readTags);
 app.put('/api/tags', requireAuth, writeTags);
 app.post('/api/cover/youtube', requireAuth, fetchYtCover);
+app.post('/api/cover/from-url', requireAuth, fetchCoverFromUrl);
 app.put('/api/cover', requireAuth, saveCover);
 app.get('/api/cover', requireAuth, streamCover);
 app.get('/api/audio/duration', requireAuth, getDuration);

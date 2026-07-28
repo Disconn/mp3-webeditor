@@ -1310,7 +1310,7 @@ a {
   height: min(900px, 100%);
   max-height: calc(100vh - 2rem);
   display: grid;
-  grid-template-rows: auto 1fr auto;
+  grid-template-rows: auto auto 1fr auto;
   gap: 0.75rem;
   background: var(--bg1);
   border: 1px solid var(--line);
@@ -1335,6 +1335,31 @@ a {
   margin: 0.2rem 0 0;
 }
 
+.cover-lightbox-sources {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  padding-bottom: 0.6rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.cover-url-form {
+  display: flex;
+  gap: 0.4rem;
+  flex: 1;
+  min-width: 220px;
+}
+
+.cover-url-form input[type='url'] {
+  flex: 1;
+  min-width: 0;
+}
+
+.cover-source-hint {
+  white-space: nowrap;
+}
+
 .cover-lightbox-stage {
   position: relative;
   min-height: 280px;
@@ -1344,6 +1369,43 @@ a {
   overflow: hidden;
   touch-action: none;
   user-select: none;
+}
+
+.cover-lightbox-stage.drag-over {
+  outline: 2px dashed var(--accent);
+  outline-offset: -6px;
+}
+
+.cover-lightbox-empty {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 0.3rem;
+  text-align: center;
+  padding: 1rem;
+}
+
+.cover-lightbox-empty p {
+  margin: 0;
+}
+
+.cover-lightbox-drophint {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgba(62, 207, 142, 0.12);
+  border: 2px dashed var(--accent);
+  border-radius: 10px;
+  z-index: 4;
+  pointer-events: none;
+}
+
+.cover-lightbox-drophint p {
+  margin: 0;
+  font-weight: 600;
 }
 
 .cover-lightbox-loading {

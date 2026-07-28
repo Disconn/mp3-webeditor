@@ -36,9 +36,19 @@ function CoverThumb({ path, hasCover, loaded, bust, onOpen }) {
 
   if (!hasCover || failed) {
     return (
-      <div className="cover-thumb placeholder" title="Kein Cover">
-        <span>♪</span>
-      </div>
+      <button
+        type="button"
+        className="cover-thumb-btn"
+        title="Cover hinzufügen"
+        onClick={(e) => {
+          e.stopPropagation();
+          onOpen?.();
+        }}
+      >
+        <div className="cover-thumb placeholder">
+          <span>♪</span>
+        </div>
+      </button>
     );
   }
 
@@ -574,6 +584,7 @@ export default function LibraryPage() {
                               path: file.path,
                               bust: file.coverBust || Date.now(),
                               name: file.name,
+                              hasCover: Boolean(file.hasCover),
                             })
                           }
                         />
@@ -688,6 +699,7 @@ export default function LibraryPage() {
                   path: detailPath,
                   bust: files.find((f) => f.path === detailPath)?.coverBust || Date.now(),
                   name: detailPath.split('/').pop(),
+                  hasCover: Boolean(detailData.cover),
                 })
               }
             />
@@ -700,6 +712,7 @@ export default function LibraryPage() {
           path={coverLightbox.path}
           bust={coverLightbox.bust}
           fileName={coverLightbox.name}
+          hasCover={coverLightbox.hasCover}
           onClose={() => setCoverLightbox(null)}
           onSaved={({ path: savedPath, bust }) => {
             setFiles((prev) =>
