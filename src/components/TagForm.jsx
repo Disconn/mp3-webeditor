@@ -7,7 +7,7 @@ function formatDuration(sec) {
   return `${m}:${String(s).padStart(2, '0')}`;
 }
 
-export default function TagForm({ fields, initialTags, cover, format, streamUrl, onSave }) {
+export default function TagForm({ fields, initialTags, cover, format, streamUrl, onSave, onOpenCover }) {
   const [tags, setTags] = useState(initialTags || {});
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -38,7 +38,14 @@ export default function TagForm({ fields, initialTags, cover, format, streamUrl,
       <div className="tag-meta">
         <div className="cover-box">
           {cover?.dataUrl ? (
-            <img src={cover.dataUrl} alt="Cover" />
+            <button
+              type="button"
+              className="cover-box-btn"
+              title="Cover öffnen / croppen"
+              onClick={onOpenCover}
+            >
+              <img src={cover.dataUrl} alt="Cover" />
+            </button>
           ) : (
             <div className="cover-empty">Kein Cover</div>
           )}

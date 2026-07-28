@@ -683,6 +683,13 @@ export default function LibraryPage() {
               format={detailData.format}
               streamUrl={api.streamUrl(detailPath)}
               onSave={onSaveDetail}
+              onOpenCover={() =>
+                setCoverLightbox({
+                  path: detailPath,
+                  bust: files.find((f) => f.path === detailPath)?.coverBust || Date.now(),
+                  name: detailPath.split('/').pop(),
+                })
+              }
             />
           )}
         </aside>
