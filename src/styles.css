@@ -83,6 +83,24 @@ a {
   font-size: 1.05rem;
 }
 
+.brand-row {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+.brand-logo {
+  display: block;
+  border-radius: 8px;
+  flex-shrink: 0;
+}
+
+.login-logo {
+  display: block;
+  border-radius: 14px;
+  margin: 0 auto;
+}
+
 .muted {
   color: var(--muted);
 }

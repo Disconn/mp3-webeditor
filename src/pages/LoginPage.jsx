@@ -28,6 +28,7 @@ export default function LoginPage() {
     <div className="login-shell">
       <div className="login-glow" aria-hidden />
       <form className="login-card" onSubmit={onSubmit}>
+        <img className="login-logo" src="/logo.svg" alt="MP3 WebEditor" width="56" height="56" />
         <p className="brand">MP3 WebEditor</p>
         <h1>Anmelden</h1>
         <p className="muted">Zugriff auf deine Audio-Bibliothek</p>

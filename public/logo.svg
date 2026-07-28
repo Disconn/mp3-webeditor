@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="MP3 WebEditor">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1e2622" />
+      <stop offset="1" stop-color="#131816" />
+    </linearGradient>
+    <linearGradient id="bars" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#3ecf8e" />
+      <stop offset="1" stop-color="#2a9a68" />
+    </linearGradient>
+  </defs>
+
+  <rect x="2" y="2" width="60" height="60" rx="15" fill="url(#bg)" stroke="#2c3832" stroke-width="2" />
+
+  <g fill="url(#bars)">
+    <rect x="9" y="27" width="4" height="10" rx="2" />
+    <rect x="16" y="22" width="4" height="20" rx="2" />
+    <rect x="23" y="17" width="4" height="30" rx="2" />
+    <rect x="30" y="13" width="4" height="38" rx="2" />
+    <rect x="37" y="17" width="4" height="30" rx="2" />
+    <rect x="44" y="22" width="4" height="20" rx="2" />
+    <rect x="51" y="27" width="4" height="10" rx="2" />
+  </g>
+
+  <g stroke="#eaf6ef" stroke-width="3" stroke-linecap="round" fill="none" opacity="0.9">
+    <path d="M10 19 V11 H18" />
+    <path d="M54 45 V53 H46" />
+  </g>
+</svg>
