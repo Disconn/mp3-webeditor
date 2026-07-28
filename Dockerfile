@@ -24,10 +24,11 @@ ENV NODE_ENV=production \
     PORT=3001 \
     HOST=0.0.0.0 \
     AUDIO_DIR=/mnt/audio \
-    FFMPEG_PATH=ffmpeg \
-    SESSION_SECRET=change-me-in-production \
-    AUTH_USER=admin \
-    AUTH_PASS=secret
+    FFMPEG_PATH=ffmpeg
+
+# SESSION_SECRET, AUTH_USER, AUTH_PASS are intentionally not baked in here (Docker
+# flags ENV/ARG for secret-shaped values). Pass them at runtime (docker run -e / compose
+# environment); server/config.js already falls back to safe dev defaults if unset.
 
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev && npm cache clean --force

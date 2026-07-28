@@ -408,7 +408,11 @@ export default function EditorPage() {
 
   useEffect(() => {
     return () => {
+      // Full unmount (e.g. navigating back to the library) — drop the big
+      // decoded PCM buffer immediately instead of waiting on GC to notice
+      // the component tree is gone. A single "Full Set" mix can hold >1GB here.
       stopSourceOnly();
+      bufferRef.current = null;
       const ctx = ctxRef.current;
       ctxRef.current = null;
       if (ctx) ctx.close().catch(() => {});

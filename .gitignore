@@ -7,3 +7,4 @@ server/tmp
 data/settings.json
 data/meta-cache.json
 data/cover-cache/
+data/sessions/

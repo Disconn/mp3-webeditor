@@ -1,5 +1,6 @@
 import express from 'express';
 import session from 'express-session';
+import FileStoreFactory from 'session-file-store';
 import cors from 'cors';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -36,6 +37,9 @@ const app = express();
 loadSettings();
 ensureAudioDirs();
 
+const FileStore = FileStoreFactory(session);
+const SESSION_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+
 app.use(
   cors({
     origin: config.isProd
@@ -45,15 +49,27 @@ app.use(
   })
 );
 app.use(express.json({ limit: '10mb' }));
+app.use('/api', (req, res, next) => {
+  // These JSON responses have their own mtime/size-based cache (metaCache/coverCache);
+  // browser-side ETag revalidation only adds a fragile, redundant 304 path on top.
+  res.set('Cache-Control', 'no-store');
+  next();
+});
 app.use(
   session({
+    store: new FileStore({
+      path: path.join(__dirname, '..', 'data', 'sessions'),
+      ttl: SESSION_MAX_AGE_MS / 1000,
+      retries: 1,
+      logFn: () => {}, // keep session housekeeping quiet, actual errors surface via express-session itself
+    }),
     secret: config.sessionSecret,
     resave: false,
     saveUninitialized: false,
     cookie: {
       httpOnly: true,
       sameSite: 'lax',
-      maxAge: 7 * 24 * 60 * 60 * 1000,
+      maxAge: SESSION_MAX_AGE_MS,
     },
   })
 );
