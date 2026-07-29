@@ -1,5 +1,6 @@
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../auth';
+import logoUrl from '../assets/logo.svg';
 
 export default function TopBar({ subtitle }) {
   const { user, logout } = useAuth();
@@ -8,7 +9,7 @@ export default function TopBar({ subtitle }) {
   return (
     <header className="topbar">
       <div className="brand-row">
-        <img className="brand-logo" src="/logo.svg" alt="" width="28" height="28" />
+        <img className="brand-logo" src={logoUrl} alt="" width="28" height="28" />
         <div>
           <p className="brand">MP3 WebEditor</p>
           {subtitle && <p className="muted small">{subtitle}</p>}
