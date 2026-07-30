@@ -1,17 +1,38 @@
 # syntax=docker/dockerfile:1
 
-# Binary source only — not used as the IDE-scanned app base.
-FROM node:22-alpine AS node
+# Node musl build (not the official `node:*` image — Scout flags those for npm CVEs).
+ARG NODE_VERSION=22.23.2
+ARG NODE_DIST_ARCH=x64
+# sha256 of node-v${NODE_VERSION}-linux-${NODE_DIST_ARCH}-musl.tar.xz
+ARG NODE_MUSL_SHA256=2d18b5731055f7efa6c899004909b00ee110e38d3775745f60ec9ccf1f9982e7
+
+# Full Node+npm toolkit (copied into build/deps, never shipped as final).
+FROM alpine:3.22 AS node-toolkit
+ARG NODE_VERSION
+ARG NODE_DIST_ARCH
+ARG NODE_MUSL_SHA256
+RUN apk upgrade --no-cache \
+  && apk add --no-cache ca-certificates curl xz libstdc++ libgcc \
+  && curl -fsSL -o /tmp/node.tar.xz \
+    "https://unofficial-builds.nodejs.org/download/release/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-${NODE_DIST_ARCH}-musl.tar.xz" \
+  && echo "${NODE_MUSL_SHA256}  /tmp/node.tar.xz" | sha256sum -c - \
+  && tar -xJf /tmp/node.tar.xz -C /usr/local --strip-components=1 \
+  && rm /tmp/node.tar.xz \
+  && node -v && npm -v
+
+# Runtime node binary only (no npm → no npm package CVEs).
+FROM alpine:3.22 AS node
+RUN apk upgrade --no-cache && apk add --no-cache libstdc++ libgcc
+COPY --from=node-toolkit /usr/local/bin/node /usr/local/bin/node
 
 # --- build frontend ---
-# Base alpine:3.22 → 0 critical/high (unlike node:* which bundles vulnerable npm).
 FROM alpine:3.22 AS build
 WORKDIR /app
 
 RUN apk upgrade --no-cache \
   && apk add --no-cache libstdc++ libgcc
 
-COPY --from=node /usr/local /usr/local
+COPY --from=node-toolkit /usr/local /usr/local
 
 COPY package.json package-lock.json ./
 RUN npm ci
@@ -35,7 +56,7 @@ FROM mwader/static-ffmpeg:8.0 AS ffmpeg
 FROM alpine:3.22 AS prod-deps
 WORKDIR /app
 RUN apk upgrade --no-cache && apk add --no-cache libstdc++ libgcc
-COPY --from=node /usr/local /usr/local
+COPY --from=node-toolkit /usr/local /usr/local
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev \
   && npm cache clean --force \
