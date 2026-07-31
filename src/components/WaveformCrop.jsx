@@ -67,6 +67,9 @@ export default function WaveformCrop({
   visibleDurationRef.current = visibleDuration;
   const maxViewStartRef = useRef(maxViewStart);
   maxViewStartRef.current = maxViewStart;
+  const zoomRef = useRef(zoom);
+  zoomRef.current = zoom;
+  const followHeadRef = useRef(true);
 
   useEffect(() => {
     const z = clampZoom(initialZoom);
@@ -77,21 +80,28 @@ export default function WaveformCrop({
 
   useEffect(() => {
     setViewStart(0);
+    followHeadRef.current = true;
   }, [samples]);
 
   useEffect(() => {
     setViewStart((v) => Math.min(v, maxViewStart));
   }, [maxViewStart]);
 
-  // Auto-follow only when not in the playing rAF loop (stopped / cursor jumps)
+  useEffect(() => {
+    if (playing) followHeadRef.current = true;
+  }, [playing]);
+
+  // Follow cursor only when it moves outside the view — not when the user pans away
   useEffect(() => {
     if (playing || playheadTime == null || !visibleDuration) return;
-    if (playheadTime < viewStart) {
+    if (!followHeadRef.current) return;
+    const vs = viewStartRef.current;
+    if (playheadTime < vs) {
       setViewStart(Math.max(0, playheadTime));
-    } else if (playheadTime > viewStart + visibleDuration) {
+    } else if (playheadTime > vs + visibleDuration) {
       setViewStart(Math.min(maxViewStart, playheadTime - visibleDuration * 0.15));
     }
-  }, [playing, playheadTime, viewStart, visibleDuration, maxViewStart]);
+  }, [playing, playheadTime, visibleDuration, maxViewStart]);
 
   useEffect(() => {
     const el = wrapRef.current;
@@ -329,7 +339,7 @@ export default function WaveformCrop({
         const vs = viewStartRef.current;
         const vd = visibleDurationRef.current;
         const maxVs = maxViewStartRef.current;
-        if (vd > 0) {
+        if (vd > 0 && followHeadRef.current) {
           if (t < vs) {
             setViewStart(Math.max(0, t));
           } else if (t > vs + vd) {
@@ -420,6 +430,7 @@ export default function WaveformCrop({
     }
 
     if (panRef.current && visibleDuration > 0) {
+      followHeadRef.current = false;
       const panDx = e.clientX - panRef.current.startX;
       const dt = -(panDx / viewWidth) * visibleDuration;
       setViewStart(Math.min(maxViewStart, Math.max(0, panRef.current.origin + dt)));
@@ -441,6 +452,7 @@ export default function WaveformCrop({
     }
 
     if (wasClick && onCursorChange && timelineDuration) {
+      followHeadRef.current = true;
       onCursorChange(Math.min(Math.max(0, clientToTime(e.clientX)), timelineDuration));
     }
   }
@@ -448,32 +460,58 @@ export default function WaveformCrop({
   function zoomAt(nextZoom, anchorClientX) {
     if (!timelineDuration) return;
     const clamped = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, nextZoom));
-    const anchorTime = clientToTime(anchorClientX);
+    const vs = viewStartRef.current;
+    const vd = visibleDurationRef.current;
+    const anchorTime = (() => {
+      const rect = canvasRef.current?.getBoundingClientRect();
+      if (!rect || !vd) return vs + vd / 2;
+      const ratio = Math.min(1, Math.max(0, (anchorClientX - rect.left) / rect.width));
+      return vs + ratio * vd;
+    })();
     const newVisible = timelineDuration / clamped;
     const newStart = Math.min(
       Math.max(0, timelineDuration - newVisible),
-      Math.max(0, anchorTime - (anchorTime - viewStart) * (newVisible / (visibleDuration || timelineDuration)))
+      Math.max(0, anchorTime - (anchorTime - vs) * (newVisible / (vd || timelineDuration)))
     );
     setZoom(clamped);
     setViewStart(newStart);
   }
 
-  function onWheel(e) {
-    if (!timelineDuration) return;
-    e.preventDefault();
-    if (e.shiftKey || Math.abs(e.deltaX) > Math.abs(e.deltaY)) {
-      const delta = (e.deltaY || e.deltaX) / viewWidth;
-      setViewStart((v) => Math.min(maxViewStart, Math.max(0, v + delta * visibleDuration)));
-      return;
+  useEffect(() => {
+    const el = wrapRef.current;
+    if (!el) return undefined;
+
+    function onWheel(e) {
+      if (!timelineDuration) return;
+      e.preventDefault();
+      const vd = visibleDurationRef.current;
+      const maxVs = maxViewStartRef.current;
+      if (!vd) return;
+
+      const wantsZoom = e.ctrlKey || e.metaKey;
+      if (wantsZoom) {
+        const factor = e.deltaY < 0 ? 1.12 : 1 / 1.12;
+        zoomAt(zoomRef.current * factor, e.clientX);
+        return;
+      }
+
+      followHeadRef.current = false;
+      const pixels =
+        Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
+      const scaled =
+        e.deltaMode === 1 ? pixels * 16 : e.deltaMode === 2 ? pixels * (viewWidth || 800) : pixels;
+      const dt = (scaled / Math.max(1, viewWidth)) * vd;
+      setViewStart((v) => Math.min(maxVs, Math.max(0, v + dt)));
     }
-    const factor = e.deltaY < 0 ? 1.12 : 1 / 1.12;
-    zoomAt(zoom * factor, e.clientX);
-  }
+
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  }, [timelineDuration, viewWidth]);
 
   function zoomBy(factor) {
     const rect = canvasRef.current?.getBoundingClientRect();
     const cx = rect ? rect.left + rect.width / 2 : window.innerWidth / 2;
-    zoomAt(zoom * factor, cx);
+    zoomAt(zoomRef.current * factor, cx);
   }
 
   const scrollRatio = maxViewStart > 0 ? viewStart / maxViewStart : 0;
@@ -518,7 +556,7 @@ export default function WaveformCrop({
         <span className="muted small">{t('wave.hint')}</span>
       </div>
 
-      <div className={`wave-viewport${loading ? ' is-loading' : ''}`} onWheel={onWheel}>
+      <div className={`wave-viewport${loading ? ' is-loading' : ''}`}>
         <canvas
           ref={canvasRef}
           className="wave-canvas"
@@ -569,7 +607,10 @@ export default function WaveformCrop({
           max={1}
           step={0.001}
           value={scrollRatio}
-          onChange={(e) => setViewStart(Number(e.target.value) * maxViewStart)}
+          onChange={(e) => {
+            followHeadRef.current = false;
+            setViewStart(Number(e.target.value) * maxViewStart);
+          }}
           aria-label={t('wave.pan')}
         />
       )}

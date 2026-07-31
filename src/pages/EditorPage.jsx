@@ -595,6 +595,33 @@ export default function EditorPage() {
             >
               {t('editor.resetCrop')}
             </button>
+            <button
+              type="button"
+              className="btn secondary"
+              onClick={() => {
+                const pos = playing ? playhead : cursor;
+                const minGap = 0.05;
+                const max = Math.max(0, keepEnd - minGap);
+                setTrimStart(Math.min(Math.max(0, pos), max));
+              }}
+              disabled={!duration}
+            >
+              {t('editor.cropStartAtPos')}
+            </button>
+            <button
+              type="button"
+              className="btn secondary"
+              onClick={() => {
+                const pos = playing ? playhead : cursor;
+                const minGap = 0.05;
+                const min = trimStart + minGap;
+                const absEnd = Math.min(Math.max(min, pos), duration);
+                setTrimEnd(Math.max(0, duration - absEnd));
+              }}
+              disabled={!duration}
+            >
+              {t('editor.cropEndAtPos')}
+            </button>
             <button type="button" className="btn primary" onClick={applyCrop} disabled={busy || !duration}>
               {busy ? t('editor.cutting') : t('editor.saveCrop')}
             </button>
