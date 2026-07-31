@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../api';
+import { useT } from '../i18n/I18nProvider';
 
 const MIN_CROP = 24;
 const MAX_UPLOAD_BYTES = 20 * 1024 * 1024;
@@ -13,6 +14,7 @@ function clamp(n, lo, hi) {
  * Sources: embedded cover, upload, URL, paste/drop, YouTube (via comment).
  */
 export default function CoverEditor({ path, bust, hasCover = true, onCancel, onSaved }) {
+  const t = useT();
   const stageRef = useRef(null);
   const imgRef = useRef(null);
   const dragRef = useRef(null);
@@ -89,16 +91,16 @@ export default function CoverEditor({ path, bust, hasCover = true, onCancel, onS
   function handleFile(file) {
     if (!file) return;
     if (!file.type.startsWith('image/')) {
-      setError('Datei ist kein Bild');
+      setError(t('cover.notImage'));
       return;
     }
     if (file.size > MAX_UPLOAD_BYTES) {
-      setError('Bild zu groß (max 20MB)');
+      setError(t('cover.tooLarge'));
       return;
     }
     const reader = new FileReader();
     reader.onload = () => loadFromDataUrl(reader.result);
-    reader.onerror = () => setError('Datei konnte nicht gelesen werden');
+    reader.onerror = () => setError(t('cover.readFailed'));
     reader.readAsDataURL(file);
   }
 
@@ -122,7 +124,7 @@ export default function CoverEditor({ path, bust, hasCover = true, onCancel, onS
       const res = await api.coverFromUrl(url);
       loadFromDataUrl(res.cover.dataUrl);
     } catch (err) {
-      setError(err.message || 'Bild konnte nicht von der URL geladen werden');
+      setError(err.message || t('cover.urlFailed'));
     } finally {
       setUrlLoading(false);
     }
@@ -132,14 +134,14 @@ export default function CoverEditor({ path, bust, hasCover = true, onCancel, onS
     if (!path || ytLoading || busy) return;
     setYtLoading(true);
     setError('');
-    setStatus('Cover von YouTube laden…');
+    setStatus(t('cover.ytStatus'));
     try {
       const data = await api.ytCover(path);
       const nextBust = Date.now();
-      setStatus(`Cover von YT geladen (${data.videoId})`);
+      setStatus(t('cover.ytLoaded', { id: data.videoId }));
       onSaved?.({ path, bust: nextBust, fromYt: true });
     } catch (err) {
-      setError(err.message || 'YouTube-Cover fehlgeschlagen');
+      setError(err.message || t('cover.ytFailed'));
       setStatus('');
     } finally {
       setYtLoading(false);
@@ -223,7 +225,7 @@ export default function CoverEditor({ path, bust, hasCover = true, onCancel, onS
       await api.saveCover(path, dataUrl);
       onSaved?.({ path, bust: Date.now() });
     } catch (err) {
-      setError(err.message || 'Cover speichern fehlgeschlagen');
+      setError(err.message || t('cover.saveFailed'));
     } finally {
       setBusy(false);
     }
@@ -255,7 +257,7 @@ export default function CoverEditor({ path, bust, hasCover = true, onCancel, onS
           onClick={() => fileInputRef.current?.click()}
           disabled={blocked}
         >
-          Bild hochladen
+          {t('cover.upload')}
         </button>
         <input
           ref={fileInputRef}
@@ -272,9 +274,9 @@ export default function CoverEditor({ path, bust, hasCover = true, onCancel, onS
           className="btn secondary"
           onClick={loadFromYoutube}
           disabled={blocked}
-          title="Cover aus YouTube-URL im Comment-Feld laden"
+          title={t('cover.ytTitle')}
         >
-          {ytLoading ? 'YT lädt…' : 'Cover von YT'}
+          {ytLoading ? t('cover.ytLoading') : t('cover.fromYt')}
         </button>
         <form
           className="cover-url-form"
@@ -286,16 +288,16 @@ export default function CoverEditor({ path, bust, hasCover = true, onCancel, onS
           <input
             type="url"
             inputMode="url"
-            placeholder="Bild-URL einfügen…"
+            placeholder={t('cover.urlPlaceholder')}
             value={urlInput}
             onChange={(e) => setUrlInput(e.target.value)}
             disabled={blocked}
           />
           <button type="submit" className="btn secondary" disabled={blocked || !urlInput.trim()}>
-            {urlLoading ? 'Lädt…' : 'Von URL'}
+            {urlLoading ? t('cover.loadingUrl') : t('cover.fromUrl')}
           </button>
         </form>
-        <span className="muted small">Ziehen / Einfügen (Strg+V)</span>
+        <span className="muted small">{t('cover.dragHint')}</span>
       </div>
 
       <div
@@ -319,15 +321,15 @@ export default function CoverEditor({ path, bust, hasCover = true, onCancel, onS
       >
         {!src && (
           <div className="cover-editor-empty">
-            <p>Kein Bild geladen</p>
-            <p className="muted small">Hochladen, YT, URL oder hierher ziehen</p>
+            <p>{t('cover.noImage')}</p>
+            <p className="muted small">{t('cover.emptyHint')}</p>
           </div>
         )}
 
         {src && !loaded && (
           <div className="cover-editor-loading">
             <span className="spinner" />
-            <span className="muted">Bild laden…</span>
+            <span className="muted">{t('cover.imageLoading')}</span>
           </div>
         )}
 
@@ -351,7 +353,7 @@ export default function CoverEditor({ path, bust, hasCover = true, onCancel, onS
             }}
             onError={() => {
               setLoaded(true);
-              setError('Bild konnte nicht geladen werden');
+              setError(t('cover.loadFailed'));
             }}
           />
         )}
@@ -363,7 +365,7 @@ export default function CoverEditor({ path, bust, hasCover = true, onCancel, onS
                 key={handle}
                 type="button"
                 className={`cover-handle cover-handle-${handle}`}
-                aria-label={`Griff ${handle}`}
+                aria-label={t('cover.handle', { handle })}
                 onPointerDown={(e) => onHandleDown(handle, e)}
               />
             ))}
@@ -372,14 +374,14 @@ export default function CoverEditor({ path, bust, hasCover = true, onCancel, onS
 
         {dragOver && (
           <div className="cover-editor-drophint">
-            <p>Bild hier ablegen</p>
+            <p>{t('cover.dropHere')}</p>
           </div>
         )}
       </div>
 
       <footer className="cover-editor-foot">
         <p className="muted small">
-          An Ecken und Seitenmitten ziehen zum Zuschneiden
+          {t('cover.cropHint')}
           {imgSize.w ? ` · ${imgSize.w}×${imgSize.h}px` : ''}
           {cropChanged && crop ? ` → ${Math.round(crop.w)}×${Math.round(crop.h)}px` : ''}
         </p>
@@ -387,10 +389,10 @@ export default function CoverEditor({ path, bust, hasCover = true, onCancel, onS
         {error && <p className="error small">{error}</p>}
         <div className="cover-editor-actions">
           <button type="button" className="btn ghost" onClick={resetCrop} disabled={blocked || !cropChanged}>
-            Reset
+            {t('cover.reset')}
           </button>
           <button type="button" className="btn secondary" onClick={onCancel} disabled={busy}>
-            Zurück
+            {t('cover.back')}
           </button>
           <button
             type="button"
@@ -398,7 +400,7 @@ export default function CoverEditor({ path, bust, hasCover = true, onCancel, onS
             onClick={saveCrop}
             disabled={blocked || !loaded || !crop}
           >
-            {busy ? 'Speichern…' : 'Crop speichern'}
+            {busy ? t('cover.saving') : t('cover.saveCrop')}
           </button>
         </div>
       </footer>

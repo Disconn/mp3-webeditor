@@ -40,6 +40,7 @@ function defaultSettings() {
     tableColumns: DEFAULT_COLUMNS,
     showActionsColumn: true,
     defaultWaveZoom: 1,
+    uiLanguage: 'de',
   };
 }
 
@@ -71,6 +72,7 @@ export function loadSettings() {
     data.showActionsColumn = true;
   }
   data.defaultWaveZoom = clampWaveZoom(data.defaultWaveZoom);
+  data.uiLanguage = clampUiLanguage(data.uiLanguage);
   return data;
 }
 
@@ -78,6 +80,10 @@ function clampWaveZoom(value) {
   const n = Number(value);
   if (!Number.isFinite(n)) return 1;
   return Math.min(16, Math.max(1, Math.round(n * 10) / 10));
+}
+
+function clampUiLanguage(value) {
+  return value === 'en' ? 'en' : 'de';
 }
 
 export function saveSettings(data) {
@@ -97,6 +103,7 @@ export function getPublicSettings() {
     tableColumns: s.tableColumns,
     showActionsColumn: s.showActionsColumn !== false,
     defaultWaveZoom: clampWaveZoom(s.defaultWaveZoom),
+    uiLanguage: clampUiLanguage(s.uiLanguage),
   };
 }
 
@@ -230,6 +237,13 @@ export function setDefaultWaveZoom(value) {
   s.defaultWaveZoom = clampWaveZoom(value);
   saveSettings(s);
   return s.defaultWaveZoom;
+}
+
+export function setUiLanguage(value) {
+  const s = loadSettings();
+  s.uiLanguage = clampUiLanguage(value);
+  saveSettings(s);
+  return s.uiLanguage;
 }
 
 export function getAudioRoots() {

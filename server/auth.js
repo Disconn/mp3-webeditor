@@ -7,6 +7,7 @@ import {
   setAudioRoots,
   setTableColumns,
   setDefaultWaveZoom,
+  setUiLanguage,
 } from './store.js';
 import { ensureAudioDirs } from './paths.js';
 import { TAG_FIELDS } from './routes/tags.js';
@@ -114,6 +115,15 @@ export function setWaveZoomHandler(req, res) {
   try {
     const zoom = setDefaultWaveZoom(req.body?.defaultWaveZoom ?? req.body?.zoom);
     res.json({ ok: true, defaultWaveZoom: zoom });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+}
+
+export function setLanguageHandler(req, res) {
+  try {
+    const uiLanguage = setUiLanguage(req.body?.uiLanguage ?? req.body?.language);
+    res.json({ ok: true, uiLanguage });
   } catch (err) {
     res.status(400).json({ error: err.message });
   }

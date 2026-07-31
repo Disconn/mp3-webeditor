@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { peaksForWindow, peaksFromOverview } from '../audioPeaks';
+import { useT } from '../i18n/I18nProvider';
 
 function formatTime(sec) {
   if (!Number.isFinite(sec) || sec < 0) return '0:00.0';
@@ -39,6 +40,7 @@ export default function WaveformCrop({
   playing = false,
   initialZoom = 1,
 }) {
+  const t = useT();
   const canvasRef = useRef(null);
   const wrapRef = useRef(null);
   const [zoom, setZoom] = useState(() => clampZoom(initialZoom));
@@ -478,7 +480,7 @@ export default function WaveformCrop({
   const percent = Math.min(100, Math.max(0, Number(loadProgress?.percent) || 0));
   const progressLabel =
     loadProgress?.detail ||
-    (loading ? 'Wellenform laden…' : '');
+    (loading ? t('wave.loading') : '');
 
   return (
     <div className="wave-wrap" ref={wrapRef}>
@@ -510,12 +512,10 @@ export default function WaveformCrop({
             }}
             disabled={loading || (zoom === defaultZoomRef.current && viewStart === 0)}
           >
-            Reset
+            {t('wave.reset')}
           </button>
         </div>
-        <span className="muted small">
-          Klick = Cursor · Griffe ziehen = Crop · Ziehen = Scroll · Mausrad = Zoom
-        </span>
+        <span className="muted small">{t('wave.hint')}</span>
       </div>
 
       <div className={`wave-viewport${loading ? ' is-loading' : ''}`} onWheel={onWheel}>
@@ -540,7 +540,7 @@ export default function WaveformCrop({
                 aria-valuemin={0}
                 aria-valuemax={100}
                 aria-valuenow={percent}
-                aria-label="Ladevorgang"
+                aria-label={t('wave.progress')}
               >
                 <div
                   className={`wave-load-fill${
@@ -551,10 +551,10 @@ export default function WaveformCrop({
               </div>
               <p className="wave-load-phases muted small">
                 {loadProgress?.phase === 'peaks'
-                  ? 'Peaks werden berechnet'
+                  ? t('wave.peaks')
                   : loadProgress?.phase === 'decode'
-                    ? 'Audio wird dekodiert'
-                    : 'Datei wird geladen'}
+                    ? t('wave.decoding')
+                    : t('wave.fileLoading')}
               </p>
             </div>
           </div>
@@ -570,7 +570,7 @@ export default function WaveformCrop({
           step={0.001}
           value={scrollRatio}
           onChange={(e) => setViewStart(Number(e.target.value) * maxViewStart)}
-          aria-label="Timeline verschieben"
+          aria-label={t('wave.pan')}
         />
       )}
 
@@ -583,8 +583,8 @@ export default function WaveformCrop({
         {loadError && <span className="error small">{loadError}</span>}
         {!loading && !loadError && (
           <span className="muted small">
-            Cursor {formatTime(cursorTime)}
-            {playheadTime != null ? ` · Play ${formatTime(playheadTime)}` : ''}
+            {t('wave.cursor', { time: formatTime(cursorTime) })}
+            {playheadTime != null ? t('wave.play', { time: formatTime(playheadTime) }) : ''}
           </span>
         )}
       </div>

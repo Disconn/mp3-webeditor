@@ -125,4 +125,11 @@ export const api = {
       headers: JSON_HEADERS,
       body: JSON.stringify({ defaultWaveZoom }),
     }).then(parse),
+  saveLanguage: (uiLanguage) =>
+    fetch('/api/settings/language', {
+      method: 'PUT',
+      credentials: 'include',
+      headers: JSON_HEADERS,
+      body: JSON.stringify({ uiLanguage }),
+    }).then(parse),
 };

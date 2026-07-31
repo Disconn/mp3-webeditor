@@ -1,10 +1,12 @@
 import { useState } from 'react';
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '../auth';
+import { useT } from '../i18n/I18nProvider';
 import logoUrl from '../assets/logo.svg';
 
 export default function LoginPage() {
   const { user, login } = useAuth();
+  const t = useT();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -19,7 +21,7 @@ export default function LoginPage() {
     try {
       await login(username, password);
     } catch (err) {
-      setError(err.message || 'Login fehlgeschlagen');
+      setError(err.message || t('login.failed'));
     } finally {
       setBusy(false);
     }
@@ -31,11 +33,11 @@ export default function LoginPage() {
       <form className="login-card" onSubmit={onSubmit}>
         <img className="login-logo" src={logoUrl} alt="MP3 WebEditor" width="56" height="56" />
         <p className="brand">MP3 WebEditor</p>
-        <h1>Anmelden</h1>
-        <p className="muted">Zugriff auf deine Audio-Bibliothek</p>
+        <h1>{t('login.title')}</h1>
+        <p className="muted">{t('login.subtitle')}</p>
 
         <label>
-          Benutzer
+          {t('login.user')}
           <input
             autoFocus
             autoComplete="username"
@@ -45,7 +47,7 @@ export default function LoginPage() {
           />
         </label>
         <label>
-          Passwort
+          {t('login.password')}
           <input
             type="password"
             autoComplete="current-password"
@@ -58,7 +60,7 @@ export default function LoginPage() {
         {error && <p className="error">{error}</p>}
 
         <button type="submit" className="btn primary" disabled={busy}>
-          {busy ? 'Prüfen…' : 'Einloggen'}
+          {busy ? t('login.checking') : t('login.submit')}
         </button>
       </form>
     </div>

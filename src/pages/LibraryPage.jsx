@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { api } from '../api';
 import TopBar from '../components/TopBar';
 import TagForm from '../components/TagForm';
+import { useT } from '../i18n/I18nProvider';
 
 const META_CONCURRENCY = 6;
 
@@ -19,6 +20,7 @@ async function mapPool(items, limit, worker) {
 }
 
 function CoverThumb({ path, hasCover, loaded, bust, onOpen }) {
+  const t = useT();
   const [failed, setFailed] = useState(false);
 
   useEffect(() => {
@@ -27,7 +29,7 @@ function CoverThumb({ path, hasCover, loaded, bust, onOpen }) {
 
   if (!loaded) {
     return (
-      <div className="cover-thumb loading" title="Cover laden…">
+      <div className="cover-thumb loading" title={t('library.coverLoading')}>
         <span className="spinner tiny" />
       </div>
     );
@@ -38,7 +40,7 @@ function CoverThumb({ path, hasCover, loaded, bust, onOpen }) {
       <button
         type="button"
         className="cover-thumb-btn"
-        title="Cover hinzufügen"
+        title={t('library.coverAdd')}
         onClick={(e) => {
           e.stopPropagation();
           onOpen?.();
@@ -55,7 +57,7 @@ function CoverThumb({ path, hasCover, loaded, bust, onOpen }) {
     <button
       type="button"
       className="cover-thumb-btn"
-      title="Cover öffnen / croppen"
+      title={t('library.coverOpen')}
       onClick={(e) => {
         e.stopPropagation();
         onOpen?.();
@@ -74,8 +76,9 @@ function CoverThumb({ path, hasCover, loaded, bust, onOpen }) {
 
 export default function LibraryPage() {
   const navigate = useNavigate();
+  const t = useT();
   const [cwd, setCwd] = useState(null); // null until first load decides
-  const [breadcrumbs, setBreadcrumbs] = useState([{ label: 'Bibliothek', path: '' }]);
+  const [breadcrumbs, setBreadcrumbs] = useState([{ label: '', path: '' }]);
   const [folders, setFolders] = useState([]);
   const [files, setFiles] = useState([]);
   const [roots, setRoots] = useState([]);
@@ -106,6 +109,11 @@ export default function LibraryPage() {
     if (bust) qs.set('t', String(bust));
     if (hasCover === false) qs.set('hasCover', '0');
     navigate(`/cover?${qs.toString()}`);
+  }
+
+  function crumbLabel(crumb) {
+    if (!crumb.path) return t('library.root');
+    return crumb.label;
   }
 
   useEffect(() => {
@@ -175,7 +183,7 @@ export default function LibraryPage() {
         }));
 
         setCwd(data.dir ?? dirPath ?? '');
-        setBreadcrumbs(data.breadcrumbs || [{ label: 'Bibliothek', path: '' }]);
+        setBreadcrumbs(data.breadcrumbs || [{ label: '', path: '' }]);
         setFolders(data.folders || []);
         setFiles(list);
         setRoots(data.roots || []);
@@ -336,7 +344,7 @@ export default function LibraryPage() {
           f.path === filePath ? { ...f, tags: { ...f.tags, [key]: value } } : f
         )
       );
-      setStatus('Gespeichert');
+      setStatus(t('library.saved'));
     } catch (err) {
       setError(err.message);
     } finally {
@@ -346,7 +354,7 @@ export default function LibraryPage() {
 
   async function applyColumns() {
     if (!draftCols.length) {
-      setError('Mindestens eine Spalte wählen');
+      setError(t('library.needColumn'));
       return;
     }
     try {
@@ -376,11 +384,11 @@ export default function LibraryPage() {
   }
 
   async function onYtCover(path) {
-    setStatus('Cover von YT…');
+    setStatus(t('library.ytCoverStatus'));
     setError('');
     try {
       const data = await api.ytCover(path);
-      setStatus(`Cover geladen (${data.videoId})`);
+      setStatus(t('library.coverLoaded', { id: data.videoId }));
       setFiles((prev) =>
         prev.map((f) =>
           f.path === path
@@ -397,7 +405,7 @@ export default function LibraryPage() {
 
   async function onSaveDetail(tags) {
     await api.saveTags(detailPath, tags);
-    setStatus('Tags gespeichert');
+    setStatus(t('library.tagsSaved'));
     const meta = await api.rowMeta(detailPath, columns);
     setFiles((prev) =>
       prev.map((f) =>
@@ -418,7 +426,7 @@ export default function LibraryPage() {
   return (
     <div className="app-shell">
       <TopBar
-        subtitle={`${roots.map((r) => r.path).join(' · ') || '…'} · ${files.length} Dateien hier`}
+        subtitle={`${roots.map((r) => r.path).join(' · ') || '…'} · ${t('library.filesHere', { count: files.length })}`}
       />
 
       <main className="table-page">
@@ -430,9 +438,9 @@ export default function LibraryPage() {
               disabled={parentPath === null || listing}
               onClick={() => loadDir(parentPath ?? '', columns)}
             >
-              ↑ Hoch
+              {t('library.up')}
             </button>
-            <nav className="breadcrumbs" aria-label="Pfad">
+            <nav className="breadcrumbs" aria-label={t('library.path')}>
               {breadcrumbs.map((crumb, i) => (
                 <span key={`${crumb.path}-${i}`} className="crumb">
                   {i > 0 && <span className="crumb-sep">/</span>}
@@ -442,7 +450,7 @@ export default function LibraryPage() {
                     disabled={i === breadcrumbs.length - 1}
                     onClick={() => loadDir(crumb.path, columns)}
                   >
-                    {crumb.label}
+                    {crumbLabel(crumb)}
                   </button>
                 </span>
               ))}
@@ -450,7 +458,7 @@ export default function LibraryPage() {
           </div>
           <input
             className="search"
-            placeholder="In diesem Ordner suchen…"
+            placeholder={t('library.search')}
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
           />
@@ -458,13 +466,18 @@ export default function LibraryPage() {
             {metaLoading && (
               <span className="load-pill">
                 <span className="spinner tiny" />
-                Tags {metaProgress.done}/{metaProgress.total}
-                {metaProgress.cached > 0 ? ` · ${metaProgress.cached} Cache` : ''}
+                {t('library.tagsProgress', {
+                  done: metaProgress.done,
+                  total: metaProgress.total,
+                })}
+                {metaProgress.cached > 0
+                  ? ` · ${t('library.cacheCount', { count: metaProgress.cached })}`
+                  : ''}
               </span>
             )}
             {!metaLoading && metaProgress.total > 0 && metaProgress.cached > 0 && (
               <span className="load-pill muted-pill">
-                {metaProgress.cached}/{metaProgress.total} aus Cache
+                {metaProgress.cached}/{metaProgress.total} {t('library.fromCache')}
               </span>
             )}
             <button
@@ -473,16 +486,16 @@ export default function LibraryPage() {
               onClick={() => loadDir(cwd || '', columns, false)}
               disabled={listing || metaLoading || !settingsReady}
             >
-              Aktualisieren
+              {t('library.refresh')}
             </button>
             <button
               type="button"
               className="btn ghost"
-              title="Tags neu von Datei lesen (Cache ignorieren)"
+              title={t('library.rereadTitle')}
               onClick={() => loadDir(cwd || '', columns, true)}
               disabled={listing || metaLoading || !settingsReady}
             >
-              Neu lesen
+              {t('library.reread')}
             </button>
             <button
               type="button"
@@ -493,14 +506,14 @@ export default function LibraryPage() {
                 setColOpen((v) => !v);
               }}
             >
-              Spalten
+              {t('library.columns')}
             </button>
           </div>
         </div>
 
         {colOpen && (
           <div className="column-picker">
-            <p className="muted small">Wichtige Tags für die Tabelle auswählen</p>
+            <p className="muted small">{t('library.columnsHint')}</p>
             <div className="column-grid">
               {available.map((col) => {
                 const checked = draftCols.includes(col.key);
@@ -525,11 +538,11 @@ export default function LibraryPage() {
                   checked={draftShowActions}
                   onChange={() => setDraftShowActions((v) => !v)}
                 />
-                Aktionen
+                {t('library.actions')}
               </label>
             </div>
             <button type="button" className="btn primary" onClick={applyColumns}>
-              Übernehmen
+              {t('library.apply')}
             </button>
           </div>
         )}
@@ -544,7 +557,7 @@ export default function LibraryPage() {
         {listing ? (
           <div className="listing-state">
             <span className="spinner" />
-            <p>Ordner laden…</p>
+            <p>{t('library.loadingFolder')}</p>
           </div>
         ) : (
           <div className="table-scroll">
@@ -552,15 +565,15 @@ export default function LibraryPage() {
               <thead>
                 <tr>
                   <SortHeader columnKey="hasCover" className="cover-col">
-                    Cover
+                    {t('library.cover')}
                   </SortHeader>
-                  <SortHeader columnKey="name">Name</SortHeader>
+                  <SortHeader columnKey="name">{t('library.name')}</SortHeader>
                   {columns.map((c) => (
                     <SortHeader key={c} columnKey={c}>
                       {labelFor[c] || c}
                     </SortHeader>
                   ))}
-                  {showActions && <th className="actions-col">Aktionen</th>}
+                  {showActions && <th className="actions-col">{t('library.actions')}</th>}
                 </tr>
               </thead>
               <tbody>
@@ -571,7 +584,7 @@ export default function LibraryPage() {
                     onDoubleClick={() => loadDir(folder.path, columns)}
                   >
                     <td className="cover-col">
-                      <div className="cover-thumb folder-icon" title="Ordner" aria-hidden>
+                      <div className="cover-thumb folder-icon" title={t('library.folder')} aria-hidden>
                         <span className="folder-glyph" />
                       </div>
                     </td>
@@ -583,7 +596,7 @@ export default function LibraryPage() {
                       >
                         {folder.name}
                       </button>
-                      <div className="muted small">Ordner</div>
+                      <div className="muted small">{t('library.folder')}</div>
                     </td>
                     {showActions && (
                       <td className="actions-col">
@@ -592,7 +605,7 @@ export default function LibraryPage() {
                           className="btn secondary tiny"
                           onClick={() => loadDir(folder.path, columns)}
                         >
-                          Öffnen
+                          {t('library.open')}
                         </button>
                       </td>
                     )}
@@ -656,20 +669,20 @@ export default function LibraryPage() {
                               className="btn ghost tiny"
                               onClick={() => onYtCover(file.path)}
                             >
-                              YT
+                              {t('library.yt')}
                             </button>
                             <Link
                               className="btn secondary tiny"
                               to={`/editor?path=${encodeURIComponent(file.path)}`}
                             >
-                              Crop
+                              {t('library.crop')}
                             </Link>
                             <button
                               type="button"
                               className="btn ghost tiny"
                               onClick={() => openDetail(file.path)}
                             >
-                              Alle
+                              {t('library.all')}
                             </button>
                           </div>
                         </td>
@@ -681,7 +694,7 @@ export default function LibraryPage() {
                 {!sortedFolders.length && !sortedFiles.length && (
                   <tr>
                     <td colSpan={columns.length + 2 + (showActions ? 1 : 0)} className="muted">
-                      Dieser Ordner ist leer.
+                      {t('library.empty')}
                     </td>
                   </tr>
                 )}
@@ -694,22 +707,22 @@ export default function LibraryPage() {
         <aside className="detail-drawer">
           <div className="drawer-head">
             <div>
-              <h2>Alle Tags</h2>
+              <h2>{t('library.allTags')}</h2>
               <p className="muted mono small">{detailPath}</p>
             </div>
             <button type="button" className="btn ghost" onClick={() => setDetailPath(null)}>
-              Schließen
+              {t('library.close')}
             </button>
           </div>
           <div className="drawer-actions">
             <Link className="btn primary" to={`/editor?path=${encodeURIComponent(detailPath)}`}>
-              Editor
+              {t('library.editor')}
             </Link>
           </div>
           {detailLoading && (
             <div className="listing-state compact">
               <span className="spinner" />
-              <p>Tags laden…</p>
+              <p>{t('library.loadingTags')}</p>
             </div>
           )}
           {!detailLoading && detailData && (

@@ -3,8 +3,10 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { api } from '../api';
 import TopBar from '../components/TopBar';
 import CoverEditor from '../components/CoverEditor';
+import { useT } from '../i18n/I18nProvider';
 
 export default function CoverPage() {
+  const t = useT();
   const [params] = useSearchParams();
   const navigate = useNavigate();
   const path = params.get('path') || '';
@@ -30,7 +32,7 @@ export default function CoverPage() {
         setReady(true);
       } catch (err) {
         if (!cancelled) {
-          setError(err.message || 'Cover-Info fehlgeschlagen');
+          setError(err.message || t('cover.infoFailed'));
           setReady(true);
         }
       }
@@ -38,17 +40,17 @@ export default function CoverPage() {
     return () => {
       cancelled = true;
     };
-  }, [path, ready]);
+  }, [path, ready, t]);
 
   if (!path) {
     return (
       <div className="app-shell narrow">
-        <TopBar subtitle="Cover" />
+        <TopBar subtitle={t('cover.subtitle')} />
         <div className="empty-state">
-          <h2>Keine Datei</h2>
-          <p className="muted">Öffne ein Cover aus der Bibliothek.</p>
+          <h2>{t('cover.noFile')}</h2>
+          <p className="muted">{t('cover.openHint')}</p>
           <Link className="btn primary" to="/">
-            Zur Bibliothek
+            {t('nav.toLibrary')}
           </Link>
         </div>
       </div>
@@ -57,14 +59,14 @@ export default function CoverPage() {
 
   return (
     <div className="app-shell">
-      <TopBar subtitle="Cover bearbeiten" />
+      <TopBar subtitle={t('cover.subtitleEdit')} />
       <main className="cover-page">
         <div className="cover-page-head">
           <div>
             <Link className="btn ghost tiny" to="/">
-              ← Bibliothek
+              {t('cover.backLibrary')}
             </Link>
-            <h1>Cover</h1>
+            <h1>{t('cover.subtitle')}</h1>
             <p className="muted mono small">{fileName}</p>
             <p className="muted mono small">{path}</p>
           </div>
@@ -79,7 +81,7 @@ export default function CoverPage() {
         {!ready ? (
           <div className="listing-state compact">
             <span className="spinner" />
-            <p>Cover laden…</p>
+            <p>{t('cover.loading')}</p>
           </div>
         ) : (
           <CoverEditor
@@ -91,7 +93,7 @@ export default function CoverPage() {
             onSaved={({ bust: nextBust, fromYt }) => {
               setHasCover(true);
               setBust(nextBust);
-              setStatus(fromYt ? 'Cover von YouTube übernommen' : 'Cover gespeichert');
+              setStatus(fromYt ? t('cover.ytApplied') : t('cover.saved'));
               setError('');
               if (!fromYt) {
                 navigate(-1);

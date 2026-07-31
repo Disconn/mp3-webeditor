@@ -1,5 +1,6 @@
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { useAuth } from './auth';
+import { useT } from './i18n/I18nProvider';
 import LoginPage from './pages/LoginPage';
 import LibraryPage from './pages/LibraryPage';
 import EditorPage from './pages/EditorPage';
@@ -8,11 +9,12 @@ import SettingsPage from './pages/SettingsPage';
 
 function Protected({ children }) {
   const { user, loading } = useAuth();
+  const t = useT();
   if (loading) {
     return (
       <div className="boot">
         <div className="boot-spinner" />
-        <p>Laden…</p>
+        <p>{t('app.loading')}</p>
       </div>
     );
   }

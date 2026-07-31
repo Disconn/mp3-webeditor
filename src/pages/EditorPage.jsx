@@ -4,6 +4,7 @@ import { api } from '../api';
 import { buildOverviewPeaks } from '../audioPeaks';
 import TopBar from '../components/TopBar';
 import WaveformCrop from '../components/WaveformCrop';
+import { useT } from '../i18n/I18nProvider';
 
 function formatTime(sec) {
   if (!Number.isFinite(sec) || sec < 0) return '0:00.0';
@@ -13,6 +14,7 @@ function formatTime(sec) {
 }
 
 export default function EditorPage() {
+  const t = useT();
   const [params] = useSearchParams();
   const path = params.get('path') || '';
 
@@ -121,7 +123,7 @@ export default function EditorPage() {
       if (!res.body?.getReader) {
         const raw = await res.arrayBuffer();
         if (!cancelled) {
-          setLoadProgress({ phase: 'download', percent: 40, detail: 'Datei geladen' });
+          setLoadProgress({ phase: 'download', percent: 40, detail: t('editor.fileLoaded') });
         }
         return raw;
       }
@@ -150,14 +152,14 @@ export default function EditorPage() {
           setLoadProgress({
             phase: 'download',
             percent: pct,
-            detail: `Datei laden… ${mb} / ${totalMb} MB`,
+            detail: t('editor.loadingFile', { current: mb, total: totalMb }),
           });
         } else {
           const mb = (received / (1024 * 1024)).toFixed(1);
           setLoadProgress({
             phase: 'download',
             percent: Math.min(38, 6 + Math.round(Math.log10(received + 1) * 8)),
-            detail: `Datei laden… ${mb} MB`,
+            detail: t('editor.loadingFileMb', { current: mb }),
           });
         }
       }
@@ -177,9 +179,9 @@ export default function EditorPage() {
         cache: 'no-store',
         signal: ac.signal,
       });
-      if (!res.ok) throw new Error(`Audio laden fehlgeschlagen (${res.status})`);
+      if (!res.ok) throw new Error(t('editor.loadFailedStatus', { status: res.status }));
       if (!cancelled) {
-        setLoadProgress({ phase: 'download', percent: 5, detail: 'Download…' });
+        setLoadProgress({ phase: 'download', percent: 5, detail: t('editor.download') });
       }
       return readBodyWithProgress(res);
     }
@@ -192,7 +194,7 @@ export default function EditorPage() {
       setWaveError('');
       setSamples(null);
       bufferRef.current = null;
-      setLoadProgress({ phase: 'download', percent: 2, detail: 'Verbindung…' });
+      setLoadProgress({ phase: 'download', percent: 2, detail: t('editor.connecting') });
 
       try {
         let raw = null;
@@ -204,7 +206,7 @@ export default function EditorPage() {
               setLoadProgress({
                 phase: 'download',
                 percent: 2,
-                detail: `Erneuter Versuch ${attempt}/4…`,
+                detail: t('editor.retry', { attempt }),
               });
               await delay(150 * attempt);
             }
@@ -217,20 +219,20 @@ export default function EditorPage() {
             // Retry — file may still be flushing after crop (esp. network drives)
           }
         }
-        if (!raw) throw lastErr || new Error('Audio laden fehlgeschlagen');
+        if (!raw) throw lastErr || new Error(t('editor.loadFailed'));
         if (cancelled || ac.signal.aborted) return;
 
         const estMs = Math.min(45000, Math.max(600, (raw.byteLength / (6 * 1024 * 1024)) * 1000));
         const decodeStarted = performance.now();
-        setLoadProgress({ phase: 'decode', percent: 42, detail: 'Wellenform dekodieren…' });
+        setLoadProgress({ phase: 'decode', percent: 42, detail: t('editor.decode') });
         decodeTick = window.setInterval(() => {
           if (cancelled) return;
-          const t = Math.min(0.93, (performance.now() - decodeStarted) / estMs);
-          const pct = 42 + Math.round(t * 13);
+          const progress = Math.min(0.93, (performance.now() - decodeStarted) / estMs);
+          const pct = 42 + Math.round(progress * 13);
           setLoadProgress({
             phase: 'decode',
             percent: pct,
-            detail: 'Wellenform dekodieren…',
+            detail: t('editor.decode'),
           });
         }, 120);
 
@@ -254,7 +256,7 @@ export default function EditorPage() {
         setLoadProgress({
           phase: 'peaks',
           percent: 56,
-          detail: 'Wellenform aufbauen… 0%',
+          detail: t('editor.buildPeaks0'),
         });
 
         const overview = await buildOverviewPeaks(
@@ -266,7 +268,7 @@ export default function EditorPage() {
             setLoadProgress({
               phase: 'peaks',
               percent: Math.min(99, pct),
-              detail: `Wellenform aufbauen… ${buildPct}%`,
+              detail: t('editor.buildPeaks', { pct: buildPct }),
             });
           },
           () => cancelled || ac.signal.aborted,
@@ -278,10 +280,10 @@ export default function EditorPage() {
         setCursor(0);
         setPlayhead(0);
         playheadClockRef.current = 0;
-        setLoadProgress({ phase: 'done', percent: 100, detail: 'Fertig' });
+        setLoadProgress({ phase: 'done', percent: 100, detail: t('editor.done') });
       } catch (err) {
         if (cancelled || ac.signal.aborted || err?.name === 'AbortError') return;
-        setWaveError(err.message || 'Audio dekodieren fehlgeschlagen');
+        setWaveError(err.message || t('editor.decodeFailed'));
         setSamples(null);
         setLoadProgress({ phase: '', percent: 0, detail: '' });
       } finally {
@@ -297,7 +299,7 @@ export default function EditorPage() {
       if (decodeTick) window.clearInterval(decodeTick);
       stopSourceOnly();
     };
-  }, [streamUrl]);
+  }, [streamUrl, t]);
 
   // Playhead from AudioContext clock (same buffer as waveform)
   useEffect(() => {
@@ -340,7 +342,7 @@ export default function EditorPage() {
     try {
       if (ctx.state === 'suspended') await ctx.resume();
     } catch (err) {
-      setError(err.message || 'AudioContext konnte nicht gestartet werden');
+      setError(err.message || t('editor.audioCtxFailed'));
       return;
     }
 
@@ -452,13 +454,13 @@ export default function EditorPage() {
   async function applyCrop() {
     if (!path) return;
     if (trimStart === 0 && trimEnd === 0) {
-      setError('Vorne und/oder hinten etwas abschneiden');
+      setError(t('editor.needTrim'));
       return;
     }
     stopPlayback();
     setBusy(true);
     setError('');
-    setStatus('Schneiden…');
+    setStatus(t('editor.cutting'));
     try {
       const data = await api.crop(path, trimStart, trimEnd);
       setTrimStart(0);
@@ -468,7 +470,7 @@ export default function EditorPage() {
       playheadClockRef.current = 0;
       setPlaying(false);
       playingRef.current = false;
-      setStatus(`Gespeichert · neue Länge ${formatTime(data.newDuration)}`);
+      setStatus(t('editor.saved', { time: formatTime(data.newDuration) }));
       // Brief pause so the filesystem releases the rewritten file, then force reload
       await new Promise((r) => setTimeout(r, 200));
       setWaveKey((k) => k + 1);
@@ -484,12 +486,12 @@ export default function EditorPage() {
   if (!path) {
     return (
       <div className="app-shell narrow">
-        <TopBar subtitle="Crop-Editor" />
+        <TopBar subtitle={t('editor.subtitle')} />
         <div className="empty-state">
-          <h2>Keine Datei</h2>
-          <p className="muted">Wähle zuerst eine MP3 in der Bibliothek.</p>
+          <h2>{t('editor.noFile')}</h2>
+          <p className="muted">{t('editor.pickHint')}</p>
           <Link className="btn primary" to="/">
-            Zur Bibliothek
+            {t('nav.toLibrary')}
           </Link>
         </div>
       </div>
@@ -503,7 +505,7 @@ export default function EditorPage() {
 
   return (
     <div className="app-shell">
-      <TopBar subtitle="Crop-Editor" />
+      <TopBar subtitle={t('editor.subtitle')} />
 
       <main className="editor-main full">
         <div className="editor-head">
@@ -511,14 +513,14 @@ export default function EditorPage() {
             <h1>{fileName}</h1>
             <p className="muted mono small">{path}</p>
           </div>
-          <p className="duration-badge">Gesamt {formatTime(duration)}</p>
+          <p className="duration-badge">{t('editor.total', { time: formatTime(duration) })}</p>
         </div>
 
         <div className="waveform-panel full">
           {!zoomReady ? (
             <div className="listing-state compact">
               <span className="spinner" />
-              <p>Editor laden…</p>
+              <p>{t('editor.loading')}</p>
             </div>
           ) : (
             <WaveformCrop
@@ -543,19 +545,19 @@ export default function EditorPage() {
 
           <div className="crop-summary">
             <div>
-              <span className="muted">Behalten von</span>
+              <span className="muted">{t('editor.keepFrom')}</span>
               <strong>{formatTime(keepStart)}</strong>
             </div>
             <div>
-              <span className="muted">bis</span>
+              <span className="muted">{t('editor.until')}</span>
               <strong>{formatTime(keepEnd)}</strong>
             </div>
             <div>
-              <span className="muted">Länge</span>
+              <span className="muted">{t('editor.length')}</span>
               <strong>{formatTime(keepLen)}</strong>
             </div>
             <div>
-              <span className="muted">Abspielpunkt</span>
+              <span className="muted">{t('editor.playhead')}</span>
               <strong>{formatTime(playing ? playhead : cursor)}</strong>
             </div>
           </div>
@@ -575,11 +577,11 @@ export default function EditorPage() {
                 onClick={playFromCursor}
                 disabled={!duration || waveLoading || !samples}
               >
-                Play <span className="kbd">Space</span>
+                {t('editor.play')} <span className="kbd">Space</span>
               </button>
             ) : (
               <button type="button" className="btn secondary" onClick={stopPlayback}>
-                Stop <span className="kbd">Space</span>
+                {t('editor.stop')} <span className="kbd">Space</span>
               </button>
             )}
             <button
@@ -591,15 +593,13 @@ export default function EditorPage() {
                 setTrimEnd(0);
               }}
             >
-              Reset Crop
+              {t('editor.resetCrop')}
             </button>
             <button type="button" className="btn primary" onClick={applyCrop} disabled={busy || !duration}>
-              {busy ? 'Schneiden…' : 'Crop speichern'}
+              {busy ? t('editor.cutting') : t('editor.saveCrop')}
             </button>
           </div>
-          <p className="muted small warn-note">
-            Crop überschreibt die Originaldatei. Tags und Cover bleiben erhalten.
-          </p>
+          <p className="muted small warn-note">{t('editor.warn')}</p>
         </div>
       </main>
     </div>

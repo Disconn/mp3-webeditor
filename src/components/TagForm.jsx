@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useT } from '../i18n/I18nProvider';
 
 function formatDuration(sec) {
   if (!Number.isFinite(sec)) return '—';
@@ -8,6 +9,7 @@ function formatDuration(sec) {
 }
 
 export default function TagForm({ fields, initialTags, cover, format, streamUrl, onSave, onOpenCover }) {
+  const t = useT();
   const [tags, setTags] = useState(initialTags || {});
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -41,28 +43,28 @@ export default function TagForm({ fields, initialTags, cover, format, streamUrl,
             <button
               type="button"
               className="cover-box-btn"
-              title="Cover öffnen / croppen"
+              title={t('tag.coverOpen')}
               onClick={onOpenCover}
             >
               <img src={cover.dataUrl} alt="Cover" />
             </button>
           ) : (
-            <button type="button" className="cover-box-btn" title="Cover hinzufügen" onClick={onOpenCover}>
-              <div className="cover-empty">Kein Cover</div>
+            <button type="button" className="cover-box-btn" title={t('tag.coverAdd')} onClick={onOpenCover}>
+              <div className="cover-empty">{t('tag.noCover')}</div>
             </button>
           )}
         </div>
         <div className="meta-stats">
           <div>
-            <span className="muted">Dauer</span>
+            <span className="muted">{t('tag.duration')}</span>
             <strong>{formatDuration(format?.duration)}</strong>
           </div>
           <div>
-            <span className="muted">Bitrate</span>
+            <span className="muted">{t('tag.bitrate')}</span>
             <strong>{format?.bitrate ? `${Math.round(format.bitrate / 1000)} kbps` : '—'}</strong>
           </div>
           <div>
-            <span className="muted">Sample Rate</span>
+            <span className="muted">{t('tag.sampleRate')}</span>
             <strong>{format?.sampleRate ? `${format.sampleRate} Hz` : '—'}</strong>
           </div>
           {streamUrl && (
@@ -95,11 +97,9 @@ export default function TagForm({ fields, initialTags, cover, format, streamUrl,
       </div>
 
       <div className="form-footer">
-        <p className="muted small">
-          Comment enthält idealerweise die YouTube-URL für „Cover von YT“.
-        </p>
+        <p className="muted small">{t('tag.commentHint')}</p>
         <button type="submit" className="btn primary" disabled={!dirty || saving}>
-          {saving ? 'Speichern…' : dirty ? 'Tags speichern' : 'Gespeichert'}
+          {saving ? t('tag.saving') : dirty ? t('tag.save') : t('tag.saved')}
         </button>
       </div>
     </form>
