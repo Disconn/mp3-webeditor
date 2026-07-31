@@ -10,28 +10,32 @@ export default function TopBar({ subtitle }) {
 
   return (
     <header className="topbar">
-      <Link className="brand-row" to="/" title={t('nav.toLibrary')}>
-        <img className="brand-logo" src={logoUrl} alt="" width="28" height="28" />
-        <div>
-          <p className="brand">MP3 WebEditor</p>
-          {subtitle && <p className="muted small">{subtitle}</p>}
-        </div>
-      </Link>
-      <nav className="topbar-actions">
-        <Link className={`btn ghost${loc.pathname === '/' ? ' nav-active' : ''}`} to="/">
-          {t('nav.library')}
+      <div className="topbar-left">
+        <Link className="brand-row" to="/" title={t('nav.toLibrary')}>
+          <img className="brand-logo" src={logoUrl} alt="" width="22" height="22" />
+          <p className="brand">
+            MP3 WebEditor
+            {subtitle ? <span className="brand-sub"> · {subtitle}</span> : null}
+          </p>
         </Link>
-        <Link
-          className={`btn ghost${loc.pathname === '/settings' ? ' nav-active' : ''}`}
-          to="/settings"
-        >
-          {t('nav.settings')}
-        </Link>
+        <nav className="topbar-nav">
+          <Link className={`btn ghost tiny${loc.pathname === '/' ? ' nav-active' : ''}`} to="/">
+            {t('nav.library')}
+          </Link>
+          <Link
+            className={`btn ghost tiny${loc.pathname === '/settings' ? ' nav-active' : ''}`}
+            to="/settings"
+          >
+            {t('nav.settings')}
+          </Link>
+        </nav>
+      </div>
+      <div className="topbar-right">
         <span className="user-pill">{user?.username}</span>
-        <button type="button" className="btn ghost" onClick={logout}>
+        <button type="button" className="btn ghost tiny" onClick={logout}>
           {t('nav.logout')}
         </button>
-      </nav>
+      </div>
     </header>
   );
 }

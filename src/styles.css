@@ -80,15 +80,27 @@ a {
   font-weight: 700;
   letter-spacing: 0.02em;
   color: var(--accent);
-  font-size: 1.05rem;
+  font-size: 0.95rem;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.brand-sub {
+  font-weight: 500;
+  color: var(--muted);
+  font-size: 0.8rem;
 }
 
 .brand-row {
   display: flex;
   align-items: center;
-  gap: 0.65rem;
+  gap: 0.5rem;
   text-decoration: none;
   color: inherit;
+  min-width: 0;
+  max-width: min(42vw, 420px);
 }
 
 .brand-row:hover .brand {
@@ -98,7 +110,7 @@ a {
 
 .brand-logo {
   display: block;
-  border-radius: 8px;
+  border-radius: 6px;
   flex-shrink: 0;
 }
 
@@ -251,8 +263,9 @@ a {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 1rem;
-  padding: 0.9rem 1.25rem;
+  gap: 0.75rem;
+  padding: 0.4rem 1rem;
+  min-height: 2.5rem;
   border-bottom: 1px solid var(--line);
   background: color-mix(in srgb, var(--bg1) 80%, transparent);
   backdrop-filter: blur(8px);
@@ -261,19 +274,30 @@ a {
   z-index: 5;
 }
 
+.topbar-left {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-width: 0;
+  flex: 1;
+}
+
+.topbar-nav,
+.topbar-right,
 .topbar-actions {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
-  flex-wrap: wrap;
+  gap: 0.35rem;
+  flex-shrink: 0;
 }
 
 .user-pill {
-  font-size: 0.85rem;
+  font-size: 0.8rem;
   color: var(--muted);
   border: 1px solid var(--line);
   border-radius: 999px;
-  padding: 0.3rem 0.7rem;
+  padding: 0.15rem 0.55rem;
+  line-height: 1.3;
 }
 
 .split {
