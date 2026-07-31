@@ -3,6 +3,7 @@ import { useAuth } from './auth';
 import LoginPage from './pages/LoginPage';
 import LibraryPage from './pages/LibraryPage';
 import EditorPage from './pages/EditorPage';
+import CoverPage from './pages/CoverPage';
 import SettingsPage from './pages/SettingsPage';
 
 function Protected({ children }) {
@@ -36,6 +37,14 @@ export default function App() {
         element={
           <Protected>
             <EditorPage />
+          </Protected>
+        }
+      />
+      <Route
+        path="/cover"
+        element={
+          <Protected>
+            <CoverPage />
           </Protected>
         }
       />

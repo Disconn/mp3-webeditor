@@ -38,6 +38,7 @@ function defaultSettings() {
       },
     ],
     tableColumns: DEFAULT_COLUMNS,
+    showActionsColumn: true,
     defaultWaveZoom: 1,
   };
 }
@@ -66,6 +67,9 @@ export function loadSettings() {
   if (!Array.isArray(data.tableColumns) || !data.tableColumns.length) {
     data.tableColumns = DEFAULT_COLUMNS;
   }
+  if (typeof data.showActionsColumn !== 'boolean') {
+    data.showActionsColumn = true;
+  }
   data.defaultWaveZoom = clampWaveZoom(data.defaultWaveZoom);
   return data;
 }
@@ -91,6 +95,7 @@ export function getPublicSettings() {
       path: r.path,
     })),
     tableColumns: s.tableColumns,
+    showActionsColumn: s.showActionsColumn !== false,
     defaultWaveZoom: clampWaveZoom(s.defaultWaveZoom),
   };
 }
@@ -204,14 +209,20 @@ export function setAudioRoots(roots) {
   return normalized;
 }
 
-export function setTableColumns(columns) {
+export function setTableColumns(columns, showActionsColumn) {
   if (!Array.isArray(columns) || !columns.length) {
     throw new Error('At least one column required');
   }
   const s = loadSettings();
   s.tableColumns = columns.map(String);
+  if (typeof showActionsColumn === 'boolean') {
+    s.showActionsColumn = showActionsColumn;
+  }
   saveSettings(s);
-  return s.tableColumns;
+  return {
+    tableColumns: s.tableColumns,
+    showActionsColumn: s.showActionsColumn !== false,
+  };
 }
 
 export function setDefaultWaveZoom(value) {

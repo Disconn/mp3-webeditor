@@ -100,8 +100,11 @@ export function setRootsHandler(req, res) {
 
 export function setColumnsHandler(req, res) {
   try {
-    const columns = setTableColumns(req.body?.tableColumns || req.body?.columns || []);
-    res.json({ ok: true, tableColumns: columns });
+    const result = setTableColumns(
+      req.body?.tableColumns || req.body?.columns || [],
+      typeof req.body?.showActionsColumn === 'boolean' ? req.body.showActionsColumn : undefined
+    );
+    res.json({ ok: true, ...result });
   } catch (err) {
     res.status(400).json({ error: err.message });
   }

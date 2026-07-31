@@ -111,12 +111,12 @@ export const api = {
       headers: JSON_HEADERS,
       body: JSON.stringify({ audioRoots }),
     }).then(parse),
-  saveColumns: (tableColumns) =>
+  saveColumns: (tableColumns, showActionsColumn) =>
     fetch('/api/settings/columns', {
       method: 'PUT',
       credentials: 'include',
       headers: JSON_HEADERS,
-      body: JSON.stringify({ tableColumns }),
+      body: JSON.stringify({ tableColumns, showActionsColumn }),
     }).then(parse),
   saveWaveZoom: (defaultWaveZoom) =>
     fetch('/api/settings/wave-zoom', {

@@ -9,12 +9,10 @@ function clamp(n, lo, hi) {
 }
 
 /**
- * Lightbox to view + crop album art via four corner handles.
- * Crop rect is in natural image pixels; display maps via scale/offset.
- * The image can come from the file's existing embedded cover, a local
- * upload (file picker / drag&drop / paste), or a URL fetched server-side.
+ * Cover crop / replace editor (page content — not a modal).
+ * Sources: embedded cover, upload, URL, paste/drop, YouTube (via comment).
  */
-export default function CoverLightbox({ path, bust, fileName, hasCover = true, onClose, onSaved }) {
+export default function CoverEditor({ path, bust, hasCover = true, onCancel, onSaved }) {
   const stageRef = useRef(null);
   const imgRef = useRef(null);
   const dragRef = useRef(null);
@@ -23,12 +21,14 @@ export default function CoverLightbox({ path, bust, fileName, hasCover = true, o
   const [src, setSrc] = useState(() => (hasCover ? api.coverUrl(path, bust || Date.now()) : ''));
   const [imgSize, setImgSize] = useState({ w: 0, h: 0 });
   const [layout, setLayout] = useState({ scale: 1, ox: 0, oy: 0, dw: 0, dh: 0 });
-  const [crop, setCrop] = useState(null); // { x, y, w, h } natural px
+  const [crop, setCrop] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [status, setStatus] = useState('');
   const [loaded, setLoaded] = useState(false);
   const [urlInput, setUrlInput] = useState('');
   const [urlLoading, setUrlLoading] = useState(false);
+  const [ytLoading, setYtLoading] = useState(false);
   const [dragOver, setDragOver] = useState(false);
 
   const measure = useCallback(() => {
@@ -71,14 +71,15 @@ export default function CoverLightbox({ path, bust, fileName, hasCover = true, o
 
   useEffect(() => {
     function onKey(e) {
-      if (e.key === 'Escape' && !busy) onClose?.();
+      if (e.key === 'Escape' && !busy) onCancel?.();
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [busy, onClose]);
+  }, [busy, onCancel]);
 
   function loadFromDataUrl(dataUrl) {
     setError('');
+    setStatus('');
     setLoaded(false);
     setImgSize({ w: 0, h: 0 });
     setCrop(null);
@@ -101,7 +102,6 @@ export default function CoverLightbox({ path, bust, fileName, hasCover = true, o
     reader.readAsDataURL(file);
   }
 
-  // Paste image from clipboard anywhere while the lightbox is open.
   useEffect(() => {
     function onPaste(e) {
       const item = Array.from(e.clipboardData?.items || []).find((it) => it.type.startsWith('image/'));
@@ -128,6 +128,24 @@ export default function CoverLightbox({ path, bust, fileName, hasCover = true, o
     }
   }
 
+  async function loadFromYoutube() {
+    if (!path || ytLoading || busy) return;
+    setYtLoading(true);
+    setError('');
+    setStatus('Cover von YouTube laden…');
+    try {
+      const data = await api.ytCover(path);
+      const nextBust = Date.now();
+      setStatus(`Cover von YT geladen (${data.videoId})`);
+      onSaved?.({ path, bust: nextBust, fromYt: true });
+    } catch (err) {
+      setError(err.message || 'YouTube-Cover fehlgeschlagen');
+      setStatus('');
+    } finally {
+      setYtLoading(false);
+    }
+  }
+
   function toNatural(clientX, clientY) {
     const rect = stageRef.current.getBoundingClientRect();
     const x = (clientX - rect.left - layout.ox) / layout.scale;
@@ -139,10 +157,7 @@ export default function CoverLightbox({ path, bust, fileName, hasCover = true, o
     e.preventDefault();
     e.stopPropagation();
     if (!crop || busy) return;
-    dragRef.current = {
-      corner: handle,
-      start: { ...crop },
-    };
+    dragRef.current = { corner: handle, start: { ...crop } };
     stageRef.current?.setPointerCapture?.(e.pointerId);
   }
 
@@ -171,12 +186,7 @@ export default function CoverLightbox({ path, bust, fileName, hasCover = true, o
     right = clamp(right, left + MIN_CROP, imgSize.w);
     bottom = clamp(bottom, top + MIN_CROP, imgSize.h);
 
-    setCrop({
-      x: left,
-      y: top,
-      w: right - left,
-      h: bottom - top,
-    });
+    setCrop({ x: left, y: top, w: right - left, h: bottom - top });
   }
 
   function onPointerUp(e) {
@@ -212,7 +222,6 @@ export default function CoverLightbox({ path, bust, fileName, hasCover = true, o
       const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
       await api.saveCover(path, dataUrl);
       onSaved?.({ path, bust: Date.now() });
-      onClose?.();
     } catch (err) {
       setError(err.message || 'Cover speichern fehlgeschlagen');
     } finally {
@@ -235,179 +244,164 @@ export default function CoverLightbox({ path, bust, fileName, hasCover = true, o
         }
       : null;
 
+  const blocked = busy || urlLoading || ytLoading;
+
   return (
-    <div
-      className="cover-lightbox"
-      role="dialog"
-      aria-modal="true"
-      aria-label="Cover bearbeiten"
-      onMouseDown={(e) => {
-        if (e.target === e.currentTarget && !busy) onClose?.();
-      }}
-    >
-      <div className="cover-lightbox-panel" onMouseDown={(e) => e.stopPropagation()}>
-        <header className="cover-lightbox-head">
-          <div>
-            <h2>Cover</h2>
-            <p className="muted small mono">{fileName || path}</p>
-          </div>
-          <button type="button" className="btn ghost" onClick={onClose} disabled={busy}>
-            Schließen
-          </button>
-        </header>
-
-        <div className="cover-lightbox-sources">
-          <button
-            type="button"
-            className="btn secondary tiny"
-            onClick={() => fileInputRef.current?.click()}
-            disabled={busy}
-          >
-            Bild hochladen
-          </button>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/*"
-            style={{ display: 'none' }}
-            onChange={(e) => {
-              const file = e.target.files?.[0];
-              handleFile(file);
-              e.target.value = '';
-            }}
-          />
-          <form
-            className="cover-url-form"
-            onSubmit={(e) => {
-              e.preventDefault();
-              loadFromUrl();
-            }}
-          >
-            <input
-              type="url"
-              inputMode="url"
-              placeholder="Bild-URL einfügen…"
-              value={urlInput}
-              onChange={(e) => setUrlInput(e.target.value)}
-              disabled={urlLoading || busy}
-            />
-            <button
-              type="submit"
-              className="btn secondary tiny"
-              disabled={urlLoading || busy || !urlInput.trim()}
-            >
-              {urlLoading ? 'Lädt…' : 'Von URL laden'}
-            </button>
-          </form>
-          <span className="muted small cover-source-hint">oder Bild hierher ziehen / einfügen (Strg+V)</span>
-        </div>
-
-        <div
-          className={`cover-lightbox-stage${dragOver ? ' drag-over' : ''}`}
-          ref={stageRef}
-          onPointerMove={onPointerMove}
-          onPointerUp={onPointerUp}
-          onPointerCancel={onPointerUp}
-          onDragOver={(e) => {
-            e.preventDefault();
-            if (!busy) setDragOver(true);
+    <div className="cover-editor">
+      <div className="cover-editor-sources">
+        <button
+          type="button"
+          className="btn secondary"
+          onClick={() => fileInputRef.current?.click()}
+          disabled={blocked}
+        >
+          Bild hochladen
+        </button>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          style={{ display: 'none' }}
+          onChange={(e) => {
+            handleFile(e.target.files?.[0]);
+            e.target.value = '';
           }}
-          onDragLeave={() => setDragOver(false)}
-          onDrop={(e) => {
+        />
+        <button
+          type="button"
+          className="btn secondary"
+          onClick={loadFromYoutube}
+          disabled={blocked}
+          title="Cover aus YouTube-URL im Comment-Feld laden"
+        >
+          {ytLoading ? 'YT lädt…' : 'Cover von YT'}
+        </button>
+        <form
+          className="cover-url-form"
+          onSubmit={(e) => {
             e.preventDefault();
-            setDragOver(false);
-            if (busy) return;
-            const file = e.dataTransfer?.files?.[0];
-            if (file) handleFile(file);
+            loadFromUrl();
           }}
         >
-          {!src && (
-            <div className="cover-lightbox-empty">
-              <p>Kein Bild geladen</p>
-              <p className="muted small">Hochladen, von einer URL laden oder hierher ziehen</p>
-            </div>
-          )}
-
-          {src && !loaded && (
-            <div className="cover-lightbox-loading">
-              <span className="spinner" />
-              <span className="muted">Bild laden…</span>
-            </div>
-          )}
-
-          {src && (
-            <img
-              ref={imgRef}
-              className="cover-lightbox-img"
-              src={src}
-              alt=""
-              draggable={false}
-              style={{
-                width: layout.dw || undefined,
-                height: layout.dh || undefined,
-                left: layout.ox,
-                top: layout.oy,
-                opacity: loaded ? 1 : 0,
-              }}
-              onLoad={() => {
-                setLoaded(true);
-                measure();
-              }}
-              onError={() => {
-                setLoaded(true);
-                setError('Bild konnte nicht geladen werden');
-              }}
-            />
-          )}
-
-          {loaded && cropStyle && (
-            <div className="cover-crop" style={cropStyle}>
-              {['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'].map((handle) => (
-                <button
-                  key={handle}
-                  type="button"
-                  className={`cover-handle cover-handle-${handle}`}
-                  aria-label={`Griff ${handle}`}
-                  onPointerDown={(e) => onHandleDown(handle, e)}
-                />
-              ))}
-            </div>
-          )}
-
-          {dragOver && (
-            <div className="cover-lightbox-drophint">
-              <p>Bild hier ablegen</p>
-            </div>
-          )}
-        </div>
-
-        <footer className="cover-lightbox-foot">
-          <p className="muted small">
-            An Ecken und Seitenmitten ziehen zum Zuschneiden
-            {imgSize.w ? ` · ${imgSize.w}×${imgSize.h}px` : ''}
-            {cropChanged && crop
-              ? ` → ${Math.round(crop.w)}×${Math.round(crop.h)}px`
-              : ''}
-          </p>
-          {error && <p className="error small">{error}</p>}
-          <div className="cover-lightbox-actions">
-            <button type="button" className="btn ghost" onClick={resetCrop} disabled={busy || !cropChanged}>
-              Reset
-            </button>
-            <button type="button" className="btn secondary" onClick={onClose} disabled={busy}>
-              Abbrechen
-            </button>
-            <button
-              type="button"
-              className="btn primary"
-              onClick={saveCrop}
-              disabled={busy || !loaded || !crop}
-            >
-              {busy ? 'Speichern…' : 'Crop speichern'}
-            </button>
-          </div>
-        </footer>
+          <input
+            type="url"
+            inputMode="url"
+            placeholder="Bild-URL einfügen…"
+            value={urlInput}
+            onChange={(e) => setUrlInput(e.target.value)}
+            disabled={blocked}
+          />
+          <button type="submit" className="btn secondary" disabled={blocked || !urlInput.trim()}>
+            {urlLoading ? 'Lädt…' : 'Von URL'}
+          </button>
+        </form>
+        <span className="muted small">Ziehen / Einfügen (Strg+V)</span>
       </div>
+
+      <div
+        className={`cover-editor-stage${dragOver ? ' drag-over' : ''}`}
+        ref={stageRef}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        onPointerCancel={onPointerUp}
+        onDragOver={(e) => {
+          e.preventDefault();
+          if (!blocked) setDragOver(true);
+        }}
+        onDragLeave={() => setDragOver(false)}
+        onDrop={(e) => {
+          e.preventDefault();
+          setDragOver(false);
+          if (blocked) return;
+          const file = e.dataTransfer?.files?.[0];
+          if (file) handleFile(file);
+        }}
+      >
+        {!src && (
+          <div className="cover-editor-empty">
+            <p>Kein Bild geladen</p>
+            <p className="muted small">Hochladen, YT, URL oder hierher ziehen</p>
+          </div>
+        )}
+
+        {src && !loaded && (
+          <div className="cover-editor-loading">
+            <span className="spinner" />
+            <span className="muted">Bild laden…</span>
+          </div>
+        )}
+
+        {src && (
+          <img
+            ref={imgRef}
+            className="cover-editor-img"
+            src={src}
+            alt=""
+            draggable={false}
+            style={{
+              width: layout.dw || undefined,
+              height: layout.dh || undefined,
+              left: layout.ox,
+              top: layout.oy,
+              opacity: loaded ? 1 : 0,
+            }}
+            onLoad={() => {
+              setLoaded(true);
+              measure();
+            }}
+            onError={() => {
+              setLoaded(true);
+              setError('Bild konnte nicht geladen werden');
+            }}
+          />
+        )}
+
+        {loaded && cropStyle && (
+          <div className="cover-crop" style={cropStyle}>
+            {['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'].map((handle) => (
+              <button
+                key={handle}
+                type="button"
+                className={`cover-handle cover-handle-${handle}`}
+                aria-label={`Griff ${handle}`}
+                onPointerDown={(e) => onHandleDown(handle, e)}
+              />
+            ))}
+          </div>
+        )}
+
+        {dragOver && (
+          <div className="cover-editor-drophint">
+            <p>Bild hier ablegen</p>
+          </div>
+        )}
+      </div>
+
+      <footer className="cover-editor-foot">
+        <p className="muted small">
+          An Ecken und Seitenmitten ziehen zum Zuschneiden
+          {imgSize.w ? ` · ${imgSize.w}×${imgSize.h}px` : ''}
+          {cropChanged && crop ? ` → ${Math.round(crop.w)}×${Math.round(crop.h)}px` : ''}
+        </p>
+        {status && <p className="ok small">{status}</p>}
+        {error && <p className="error small">{error}</p>}
+        <div className="cover-editor-actions">
+          <button type="button" className="btn ghost" onClick={resetCrop} disabled={blocked || !cropChanged}>
+            Reset
+          </button>
+          <button type="button" className="btn secondary" onClick={onCancel} disabled={busy}>
+            Zurück
+          </button>
+          <button
+            type="button"
+            className="btn primary"
+            onClick={saveCrop}
+            disabled={blocked || !loaded || !crop}
+          >
+            {busy ? 'Speichern…' : 'Crop speichern'}
+          </button>
+        </div>
+      </footer>
     </div>
   );
 }

@@ -1,9 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { api } from '../api';
 import TopBar from '../components/TopBar';
 import TagForm from '../components/TagForm';
-import CoverLightbox from '../components/CoverLightbox';
 
 const META_CONCURRENCY = 6;
 
@@ -74,6 +73,7 @@ function CoverThumb({ path, hasCover, loaded, bust, onOpen }) {
 }
 
 export default function LibraryPage() {
+  const navigate = useNavigate();
   const [cwd, setCwd] = useState(null); // null until first load decides
   const [breadcrumbs, setBreadcrumbs] = useState([{ label: 'Bibliothek', path: '' }]);
   const [folders, setFolders] = useState([]);
@@ -92,13 +92,21 @@ export default function LibraryPage() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [colOpen, setColOpen] = useState(false);
   const [draftCols, setDraftCols] = useState([]);
+  const [showActions, setShowActions] = useState(true);
+  const [draftShowActions, setDraftShowActions] = useState(true);
   const [filter, setFilter] = useState('');
   const [settingsReady, setSettingsReady] = useState(false);
   const [sortKey, setSortKey] = useState('name');
   const [sortDir, setSortDir] = useState('asc');
-  const [coverLightbox, setCoverLightbox] = useState(null); // { path, bust, name }
   const loadGen = useRef(0);
   const columnsRef = useRef([]);
+
+  function openCoverPage(filePath, { bust, hasCover } = {}) {
+    const qs = new URLSearchParams({ path: filePath });
+    if (bust) qs.set('t', String(bust));
+    if (hasCover === false) qs.set('hasCover', '0');
+    navigate(`/cover?${qs.toString()}`);
+  }
 
   useEffect(() => {
     columnsRef.current = columns;
@@ -192,8 +200,11 @@ export default function LibraryPage() {
         const settings = await api.settings();
         if (cancelled) return;
         const useCols = settings.tableColumns || [];
+        const actionsVisible = settings.showActionsColumn !== false;
         setColumns(useCols);
         setDraftCols(useCols);
+        setShowActions(actionsVisible);
+        setDraftShowActions(actionsVisible);
         setAvailable(settings.availableColumns || []);
         setSettingsReady(true);
         await loadDir('', useCols);
@@ -339,8 +350,9 @@ export default function LibraryPage() {
       return;
     }
     try {
-      await api.saveColumns(draftCols);
+      await api.saveColumns(draftCols, draftShowActions);
       setColumns(draftCols);
+      setShowActions(draftShowActions);
       setColOpen(false);
       await loadDir(cwd || '', draftCols);
     } catch (err) {
@@ -472,7 +484,15 @@ export default function LibraryPage() {
             >
               Neu lesen
             </button>
-            <button type="button" className="btn secondary" onClick={() => setColOpen((v) => !v)}>
+            <button
+              type="button"
+              className="btn secondary"
+              onClick={() => {
+                setDraftCols(columns);
+                setDraftShowActions(showActions);
+                setColOpen((v) => !v);
+              }}
+            >
               Spalten
             </button>
           </div>
@@ -499,6 +519,14 @@ export default function LibraryPage() {
                   </label>
                 );
               })}
+              <label className="check">
+                <input
+                  type="checkbox"
+                  checked={draftShowActions}
+                  onChange={() => setDraftShowActions((v) => !v)}
+                />
+                Aktionen
+              </label>
             </div>
             <button type="button" className="btn primary" onClick={applyColumns}>
               Übernehmen
@@ -532,7 +560,7 @@ export default function LibraryPage() {
                       {labelFor[c] || c}
                     </SortHeader>
                   ))}
-                  <th className="actions-col">Aktionen</th>
+                  {showActions && <th className="actions-col">Aktionen</th>}
                 </tr>
               </thead>
               <tbody>
@@ -557,15 +585,17 @@ export default function LibraryPage() {
                       </button>
                       <div className="muted small">Ordner</div>
                     </td>
-                    <td className="actions-col">
-                      <button
-                        type="button"
-                        className="btn secondary tiny"
-                        onClick={() => loadDir(folder.path, columns)}
-                      >
-                        Öffnen
-                      </button>
-                    </td>
+                    {showActions && (
+                      <td className="actions-col">
+                        <button
+                          type="button"
+                          className="btn secondary tiny"
+                          onClick={() => loadDir(folder.path, columns)}
+                        >
+                          Öffnen
+                        </button>
+                      </td>
+                    )}
                   </tr>
                 ))}
 
@@ -580,10 +610,8 @@ export default function LibraryPage() {
                           loaded={ready}
                           bust={file.coverBust}
                           onOpen={() =>
-                            setCoverLightbox({
-                              path: file.path,
+                            openCoverPage(file.path, {
                               bust: file.coverBust || Date.now(),
-                              name: file.name,
                               hasCover: Boolean(file.hasCover),
                             })
                           }
@@ -620,37 +648,39 @@ export default function LibraryPage() {
                           </td>
                         );
                       })}
-                      <td className="actions-col">
-                        <div className="row-actions">
-                          <button
-                            type="button"
-                            className="btn ghost tiny"
-                            onClick={() => onYtCover(file.path)}
-                          >
-                            YT
-                          </button>
-                          <Link
-                            className="btn secondary tiny"
-                            to={`/editor?path=${encodeURIComponent(file.path)}`}
-                          >
-                            Crop
-                          </Link>
-                          <button
-                            type="button"
-                            className="btn ghost tiny"
-                            onClick={() => openDetail(file.path)}
-                          >
-                            Alle
-                          </button>
-                        </div>
-                      </td>
+                      {showActions && (
+                        <td className="actions-col">
+                          <div className="row-actions">
+                            <button
+                              type="button"
+                              className="btn ghost tiny"
+                              onClick={() => onYtCover(file.path)}
+                            >
+                              YT
+                            </button>
+                            <Link
+                              className="btn secondary tiny"
+                              to={`/editor?path=${encodeURIComponent(file.path)}`}
+                            >
+                              Crop
+                            </Link>
+                            <button
+                              type="button"
+                              className="btn ghost tiny"
+                              onClick={() => openDetail(file.path)}
+                            >
+                              Alle
+                            </button>
+                          </div>
+                        </td>
+                      )}
                     </tr>
                   );
                 })}
 
                 {!sortedFolders.length && !sortedFiles.length && (
                   <tr>
-                    <td colSpan={columns.length + 3} className="muted">
+                    <td colSpan={columns.length + 2 + (showActions ? 1 : 0)} className="muted">
                       Dieser Ordner ist leer.
                     </td>
                   </tr>
@@ -672,11 +702,8 @@ export default function LibraryPage() {
             </button>
           </div>
           <div className="drawer-actions">
-            <button type="button" className="btn secondary" onClick={() => onYtCover(detailPath)}>
-              Cover von YT
-            </button>
             <Link className="btn primary" to={`/editor?path=${encodeURIComponent(detailPath)}`}>
-              Editor (Crop)
+              Editor
             </Link>
           </div>
           {detailLoading && (
@@ -695,39 +722,14 @@ export default function LibraryPage() {
               streamUrl={api.streamUrl(detailPath)}
               onSave={onSaveDetail}
               onOpenCover={() =>
-                setCoverLightbox({
-                  path: detailPath,
+                openCoverPage(detailPath, {
                   bust: files.find((f) => f.path === detailPath)?.coverBust || Date.now(),
-                  name: detailPath.split('/').pop(),
                   hasCover: Boolean(detailData.cover),
                 })
               }
             />
           )}
         </aside>
-      )}
-
-      {coverLightbox && (
-        <CoverLightbox
-          path={coverLightbox.path}
-          bust={coverLightbox.bust}
-          fileName={coverLightbox.name}
-          hasCover={coverLightbox.hasCover}
-          onClose={() => setCoverLightbox(null)}
-          onSaved={({ path: savedPath, bust }) => {
-            setFiles((prev) =>
-              prev.map((f) =>
-                f.path === savedPath
-                  ? { ...f, hasCover: true, coverBust: bust, metaStatus: 'ready' }
-                  : f
-              )
-            );
-            setStatus('Cover zugeschnitten und gespeichert');
-            if (detailPath === savedPath) {
-              openDetail(savedPath);
-            }
-          }}
-        />
       )}
     </div>
   );
