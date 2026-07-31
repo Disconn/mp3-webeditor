@@ -87,6 +87,13 @@ a {
   display: flex;
   align-items: center;
   gap: 0.65rem;
+  text-decoration: none;
+  color: inherit;
+}
+
+.brand-row:hover .brand {
+  color: var(--accent);
+  filter: brightness(1.08);
 }
 
 .brand-logo {

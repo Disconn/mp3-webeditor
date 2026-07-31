@@ -8,13 +8,13 @@ export default function TopBar({ subtitle }) {
 
   return (
     <header className="topbar">
-      <div className="brand-row">
+      <Link className="brand-row" to="/" title="Zur Bibliothek">
         <img className="brand-logo" src={logoUrl} alt="" width="28" height="28" />
         <div>
           <p className="brand">MP3 WebEditor</p>
           {subtitle && <p className="muted small">{subtitle}</p>}
         </div>
-      </div>
+      </Link>
       <nav className="topbar-actions">
         <Link className={`btn ghost${loc.pathname === '/' ? ' nav-active' : ''}`} to="/">
           Bibliothek
