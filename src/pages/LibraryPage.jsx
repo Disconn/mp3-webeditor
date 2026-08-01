@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { api } from '../api';
 import TopBar from '../components/TopBar';
 import TagForm from '../components/TagForm';
+import RowPlayer from '../components/RowPlayer';
 import { useT } from '../i18n/I18nProvider';
 
 const META_CONCURRENCY = 6;
@@ -97,6 +98,8 @@ export default function LibraryPage() {
   const [draftCols, setDraftCols] = useState([]);
   const [showActions, setShowActions] = useState(true);
   const [draftShowActions, setDraftShowActions] = useState(true);
+  const [showPlayer, setShowPlayer] = useState(true);
+  const [draftShowPlayer, setDraftShowPlayer] = useState(true);
   const [filter, setFilter] = useState('');
   const [settingsReady, setSettingsReady] = useState(false);
   const [sortKey, setSortKey] = useState('name');
@@ -209,10 +212,13 @@ export default function LibraryPage() {
         if (cancelled) return;
         const useCols = settings.tableColumns || [];
         const actionsVisible = settings.showActionsColumn !== false;
+        const playerVisible = settings.showPlayerColumn !== false;
         setColumns(useCols);
         setDraftCols(useCols);
         setShowActions(actionsVisible);
         setDraftShowActions(actionsVisible);
+        setShowPlayer(playerVisible);
+        setDraftShowPlayer(playerVisible);
         setAvailable(settings.availableColumns || []);
         setSettingsReady(true);
         await loadDir('', useCols);
@@ -353,14 +359,14 @@ export default function LibraryPage() {
   }
 
   async function applyColumns() {
-    if (!draftCols.length) {
-      setError(t('library.needColumn'));
-      return;
-    }
     try {
-      await api.saveColumns(draftCols, draftShowActions);
+      await api.saveColumns(draftCols, {
+        showActionsColumn: draftShowActions,
+        showPlayerColumn: draftShowPlayer,
+      });
       setColumns(draftCols);
       setShowActions(draftShowActions);
+      setShowPlayer(draftShowPlayer);
       setColOpen(false);
       await loadDir(cwd || '', draftCols);
     } catch (err) {
@@ -503,6 +509,7 @@ export default function LibraryPage() {
               onClick={() => {
                 setDraftCols(columns);
                 setDraftShowActions(showActions);
+                setDraftShowPlayer(showPlayer);
                 setColOpen((v) => !v);
               }}
             >
@@ -514,33 +521,52 @@ export default function LibraryPage() {
         {colOpen && (
           <div className="column-picker">
             <p className="muted small">{t('library.columnsHint')}</p>
-            <div className="column-grid">
-              {available.map((col) => {
-                const checked = draftCols.includes(col.key);
-                return (
-                  <label key={col.key} className="check">
-                    <input
-                      type="checkbox"
-                      checked={checked}
-                      onChange={() => {
-                        setDraftCols((prev) =>
-                          checked ? prev.filter((k) => k !== col.key) : [...prev, col.key]
-                        );
-                      }}
-                    />
-                    {col.label}
-                  </label>
-                );
-              })}
-              <label className="check">
-                <input
-                  type="checkbox"
-                  checked={draftShowActions}
-                  onChange={() => setDraftShowActions((v) => !v)}
-                />
-                {t('library.actions')}
-              </label>
+
+            <div className="column-section">
+              <h3 className="column-section-title">{t('library.columnsTags')}</h3>
+              <div className="column-grid">
+                {available.map((col) => {
+                  const checked = draftCols.includes(col.key);
+                  return (
+                    <label key={col.key} className="check">
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() => {
+                          setDraftCols((prev) =>
+                            checked ? prev.filter((k) => k !== col.key) : [...prev, col.key]
+                          );
+                        }}
+                      />
+                      {col.label}
+                    </label>
+                  );
+                })}
+              </div>
             </div>
+
+            <div className="column-section">
+              <h3 className="column-section-title">{t('library.columnsSpecial')}</h3>
+              <div className="column-grid">
+                <label className="check">
+                  <input
+                    type="checkbox"
+                    checked={draftShowPlayer}
+                    onChange={() => setDraftShowPlayer((v) => !v)}
+                  />
+                  {t('library.player')}
+                </label>
+                <label className="check">
+                  <input
+                    type="checkbox"
+                    checked={draftShowActions}
+                    onChange={() => setDraftShowActions((v) => !v)}
+                  />
+                  {t('library.actions')}
+                </label>
+              </div>
+            </div>
+
             <button type="button" className="btn primary" onClick={applyColumns}>
               {t('library.apply')}
             </button>
@@ -568,6 +594,7 @@ export default function LibraryPage() {
                     {t('library.cover')}
                   </SortHeader>
                   <SortHeader columnKey="name">{t('library.name')}</SortHeader>
+                  {showPlayer && <th className="player-col">{t('library.player')}</th>}
                   {columns.map((c) => (
                     <SortHeader key={c} columnKey={c}>
                       {labelFor[c] || c}
@@ -588,7 +615,7 @@ export default function LibraryPage() {
                         <span className="folder-glyph" />
                       </div>
                     </td>
-                    <td className="name-cell" colSpan={columns.length + 1}>
+                    <td className="name-cell" colSpan={columns.length + 1 + (showPlayer ? 1 : 0)}>
                       <button
                         type="button"
                         className="linkish folder-link"
@@ -635,6 +662,11 @@ export default function LibraryPage() {
                           {file.name}
                         </button>
                       </td>
+                      {showPlayer && (
+                        <td className="player-col">
+                          <RowPlayer path={file.path} />
+                        </td>
+                      )}
                       {columns.map((c) => {
                         const cellId = `${file.path}:${c}`;
                         const val = file.tags?.[c] ?? '';
@@ -693,7 +725,12 @@ export default function LibraryPage() {
 
                 {!sortedFolders.length && !sortedFiles.length && (
                   <tr>
-                    <td colSpan={columns.length + 2 + (showActions ? 1 : 0)} className="muted">
+                    <td
+                      colSpan={
+                        columns.length + 2 + (showPlayer ? 1 : 0) + (showActions ? 1 : 0)
+                      }
+                      className="muted"
+                    >
                       {t('library.empty')}
                     </td>
                   </tr>

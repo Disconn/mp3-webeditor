@@ -39,6 +39,7 @@ function defaultSettings() {
     ],
     tableColumns: DEFAULT_COLUMNS,
     showActionsColumn: true,
+    showPlayerColumn: true,
     defaultWaveZoom: 1,
     uiLanguage: 'de',
     uiTheme: 'dark',
@@ -71,6 +72,9 @@ export function loadSettings() {
   }
   if (typeof data.showActionsColumn !== 'boolean') {
     data.showActionsColumn = true;
+  }
+  if (typeof data.showPlayerColumn !== 'boolean') {
+    data.showPlayerColumn = true;
   }
   data.defaultWaveZoom = clampWaveZoom(data.defaultWaveZoom);
   data.uiLanguage = clampUiLanguage(data.uiLanguage);
@@ -108,6 +112,7 @@ export function getPublicSettings() {
     })),
     tableColumns: s.tableColumns,
     showActionsColumn: s.showActionsColumn !== false,
+    showPlayerColumn: s.showPlayerColumn !== false,
     defaultWaveZoom: clampWaveZoom(s.defaultWaveZoom),
     uiLanguage: clampUiLanguage(s.uiLanguage),
     uiTheme: clampUiTheme(s.uiTheme),
@@ -223,19 +228,24 @@ export function setAudioRoots(roots) {
   return normalized;
 }
 
-export function setTableColumns(columns, showActionsColumn) {
-  if (!Array.isArray(columns) || !columns.length) {
+export function setTableColumns(columns, options = {}) {
+  if (!Array.isArray(columns)) {
     throw new Error('At least one column required');
   }
+  // Empty tag columns allowed — Cover/Name (+ special cols) always remain
   const s = loadSettings();
   s.tableColumns = columns.map(String);
-  if (typeof showActionsColumn === 'boolean') {
-    s.showActionsColumn = showActionsColumn;
+  if (typeof options.showActionsColumn === 'boolean') {
+    s.showActionsColumn = options.showActionsColumn;
+  }
+  if (typeof options.showPlayerColumn === 'boolean') {
+    s.showPlayerColumn = options.showPlayerColumn;
   }
   saveSettings(s);
   return {
     tableColumns: s.tableColumns,
     showActionsColumn: s.showActionsColumn !== false,
+    showPlayerColumn: s.showPlayerColumn !== false,
   };
 }
 

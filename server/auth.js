@@ -102,10 +102,12 @@ export function setRootsHandler(req, res) {
 
 export function setColumnsHandler(req, res) {
   try {
-    const result = setTableColumns(
-      req.body?.tableColumns || req.body?.columns || [],
-      typeof req.body?.showActionsColumn === 'boolean' ? req.body.showActionsColumn : undefined
-    );
+    const result = setTableColumns(req.body?.tableColumns || req.body?.columns || [], {
+      showActionsColumn:
+        typeof req.body?.showActionsColumn === 'boolean' ? req.body.showActionsColumn : undefined,
+      showPlayerColumn:
+        typeof req.body?.showPlayerColumn === 'boolean' ? req.body.showPlayerColumn : undefined,
+    });
     res.json({ ok: true, ...result });
   } catch (err) {
     res.status(400).json({ error: err.message });
