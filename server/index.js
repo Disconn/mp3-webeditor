@@ -20,6 +20,7 @@ import {
   setColumnsHandler,
   setWaveZoomHandler,
   setLanguageHandler,
+  setThemeHandler,
 } from './auth.js';
 import { listTree, listLibrary } from './routes/files.js';
 import {
@@ -87,6 +88,7 @@ app.put('/api/settings/roots', requireAuth, setRootsHandler);
 app.put('/api/settings/columns', requireAuth, setColumnsHandler);
 app.put('/api/settings/wave-zoom', requireAuth, setWaveZoomHandler);
 app.put('/api/settings/language', requireAuth, setLanguageHandler);
+app.put('/api/settings/theme', requireAuth, setThemeHandler);
 
 app.get('/api/files', requireAuth, listTree);
 app.get('/api/library', requireAuth, listLibrary);

@@ -1,7 +1,10 @@
-:root {
+:root,
+html[data-theme='dark'] {
+  color-scheme: dark;
   --bg0: #0f1412;
   --bg1: #161c19;
   --bg2: #1e2622;
+  --bg-deep: #0c100e;
   --line: #2c3832;
   --text: #e8efe9;
   --muted: #8fa197;
@@ -10,9 +13,31 @@
   --warn: #e8b84a;
   --danger: #e86a6a;
   --ok: #3ecf8e;
+  --glow-a: #1a3d2e55;
+  --glow-b: #24352844;
+  --menu-shadow: 0 16px 40px rgba(0, 0, 0, 0.45);
   --radius: 10px;
   --font: 'DM Sans', system-ui, sans-serif;
   --mono: 'JetBrains Mono', ui-monospace, monospace;
+}
+
+html[data-theme='light'] {
+  color-scheme: light;
+  --bg0: #f3f6f4;
+  --bg1: #ffffff;
+  --bg2: #e7ece9;
+  --bg-deep: #e8eeea;
+  --line: #c7d2cb;
+  --text: #152019;
+  --muted: #5d7066;
+  --accent: #1f9d63;
+  --accent-dim: #187a4d;
+  --warn: #b8860b;
+  --danger: #c94444;
+  --ok: #1f9d63;
+  --glow-a: #3ecf8e28;
+  --glow-b: #2a9a6820;
+  --menu-shadow: 0 14px 36px rgba(21, 32, 25, 0.14);
 }
 
 *,
@@ -32,9 +57,9 @@ body {
   font-family: var(--font);
   color: var(--text);
   background:
-    radial-gradient(1200px 600px at 10% -10%, #1a3d2e55, transparent 55%),
-    radial-gradient(900px 500px at 100% 0%, #24352844, transparent 50%),
-    linear-gradient(180deg, var(--bg0), #0c100e 80%);
+    radial-gradient(1200px 600px at 10% -10%, var(--glow-a), transparent 55%),
+    radial-gradient(900px 500px at 100% 0%, var(--glow-b), transparent 50%),
+    linear-gradient(180deg, var(--bg0), var(--bg-deep) 80%);
   background-attachment: fixed;
 }
 
@@ -289,6 +314,135 @@ a {
   align-items: center;
   gap: 0.35rem;
   flex-shrink: 0;
+}
+
+.topbar-right {
+  position: relative;
+}
+
+.user-menu-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.15rem 0.4rem 0.15rem 0.15rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--bg2);
+  color: var(--text);
+  cursor: pointer;
+  line-height: 1.2;
+}
+
+.user-menu-trigger:hover,
+.user-menu-trigger.open {
+  border-color: var(--accent-dim);
+}
+
+.user-avatar {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: #fff;
+  letter-spacing: 0.02em;
+  flex-shrink: 0;
+}
+
+.user-menu-name {
+  font-size: 0.82rem;
+  max-width: 9rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.user-menu-caret {
+  font-size: 0.7rem;
+  color: var(--muted);
+  margin-right: 0.15rem;
+}
+
+.user-menu {
+  position: absolute;
+  top: calc(100% + 0.35rem);
+  right: 0;
+  min-width: 210px;
+  padding: 0.55rem;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--bg1);
+  box-shadow: var(--menu-shadow);
+  z-index: 40;
+  display: grid;
+  gap: 0.45rem;
+}
+
+.user-menu-section {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.user-menu-label {
+  margin: 0;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  padding: 0 0.25rem;
+}
+
+.theme-toggle {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.3rem;
+}
+
+.theme-option {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--bg2);
+  color: var(--text);
+  padding: 0.4rem 0.5rem;
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+
+.theme-option:hover {
+  border-color: var(--accent-dim);
+}
+
+.theme-option.active {
+  border-color: var(--accent-dim);
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, var(--bg2));
+}
+
+.user-menu-divider {
+  height: 1px;
+  background: var(--line);
+}
+
+.user-menu-item {
+  width: 100%;
+  text-align: left;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text);
+  padding: 0.45rem 0.55rem;
+  font-size: 0.88rem;
+  cursor: pointer;
+}
+
+.user-menu-item:hover {
+  background: var(--bg2);
+}
+
+.user-menu-item.danger {
+  color: var(--danger);
 }
 
 .user-pill {

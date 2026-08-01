@@ -132,4 +132,11 @@ export const api = {
       headers: JSON_HEADERS,
       body: JSON.stringify({ uiLanguage }),
     }).then(parse),
+  saveTheme: (uiTheme) =>
+    fetch('/api/settings/theme', {
+      method: 'PUT',
+      credentials: 'include',
+      headers: JSON_HEADERS,
+      body: JSON.stringify({ uiTheme }),
+    }).then(parse),
 };

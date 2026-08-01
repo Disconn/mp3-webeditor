@@ -8,6 +8,7 @@ import {
   setTableColumns,
   setDefaultWaveZoom,
   setUiLanguage,
+  setUiTheme,
 } from './store.js';
 import { ensureAudioDirs } from './paths.js';
 import { TAG_FIELDS } from './routes/tags.js';
@@ -124,6 +125,15 @@ export function setLanguageHandler(req, res) {
   try {
     const uiLanguage = setUiLanguage(req.body?.uiLanguage ?? req.body?.language);
     res.json({ ok: true, uiLanguage });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+}
+
+export function setThemeHandler(req, res) {
+  try {
+    const uiTheme = setUiTheme(req.body?.uiTheme ?? req.body?.theme);
+    res.json({ ok: true, uiTheme });
   } catch (err) {
     res.status(400).json({ error: err.message });
   }

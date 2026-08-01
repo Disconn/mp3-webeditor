@@ -10,6 +10,9 @@ export const MESSAGES = {
     'nav.settings': 'Einstellungen',
     'nav.logout': 'Abmelden',
     'nav.toLibrary': 'Zur Bibliothek',
+    'nav.theme': 'Darstellung',
+    'nav.themeLight': 'Hell',
+    'nav.themeDark': 'Dunkel',
 
     'login.title': 'Anmelden',
     'login.subtitle': 'Zugriff auf deine Audio-Bibliothek',
@@ -204,6 +207,9 @@ export const MESSAGES = {
     'nav.settings': 'Settings',
     'nav.logout': 'Logout',
     'nav.toLibrary': 'Back to library',
+    'nav.theme': 'Appearance',
+    'nav.themeLight': 'Light',
+    'nav.themeDark': 'Dark',
 
     'login.title': 'Sign in',
     'login.subtitle': 'Access your audio library',
