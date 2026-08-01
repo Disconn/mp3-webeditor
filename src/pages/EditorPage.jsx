@@ -1,9 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { api } from '../api';
+import { buildOverviewPeaks } from '../audioPeaks';
 import TopBar from '../components/TopBar';
 import WaveformCrop from '../components/WaveformCrop';
 import { useT } from '../i18n/I18nProvider';
+
+/** Below this size we decode in-browser so waveform + playback share one PCM timeline */
+const CLIENT_DECODE_MAX_BYTES = 48 * 1024 * 1024;
 
 function formatTime(sec) {
   if (!Number.isFinite(sec) || sec < 0) return '0:00.0';
@@ -17,6 +21,19 @@ function base64ToFloat32(b64) {
   const bytes = new Uint8Array(bin.length);
   for (let i = 0; i < bin.length; i += 1) bytes[i] = bin.charCodeAt(i);
   return new Float32Array(bytes.buffer);
+}
+
+/** Stretch overview buckets evenly across a playback duration (HTMLAudio timeline). */
+function alignOverviewToDuration(overview, sampleRate, audioDur) {
+  if (!overview?.mins?.length || !(audioDur > 0) || !(sampleRate > 0)) return overview;
+  const length = Math.max(1, Math.round(audioDur * sampleRate));
+  const bucketSize = Math.max(1, Math.ceil(length / overview.mins.length));
+  return {
+    mins: overview.mins,
+    maxs: overview.maxs,
+    bucketSize,
+    length,
+  };
 }
 
 export default function EditorPage() {
@@ -47,24 +64,75 @@ export default function EditorPage() {
     detail: '',
   });
 
-  // Streamed HTMLAudioElement for playback (no full-file browser decode)
+  // mode: 'webaudio' (perfect sync) | 'element' (large files, peaks + HTMLAudio)
+  const modeRef = useRef('element');
+  const ctxRef = useRef(null);
+  const bufferRef = useRef(null);
+  const sourceRef = useRef(null);
+  const playOriginRef = useRef({ ctxTime: 0, offset: 0 });
   const audioRef = useRef(null);
   const playingRef = useRef(false);
   const playheadClockRef = useRef(0);
+  const durationRef = useRef(0);
+  durationRef.current = duration;
+
+  function getAudioCtx() {
+    if (!ctxRef.current) {
+      ctxRef.current = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    return ctxRef.current;
+  }
 
   function ensureAudioEl() {
     if (!audioRef.current) {
       const el = new Audio();
-      el.preload = 'metadata';
+      el.preload = 'auto';
       audioRef.current = el;
     }
     return audioRef.current;
+  }
+
+  function stopSourceOnly() {
+    const src = sourceRef.current;
+    sourceRef.current = null;
+    if (!src) return;
+    try {
+      src.onended = null;
+      src.stop();
+    } catch {
+      /* already stopped */
+    }
+    try {
+      src.disconnect();
+    } catch {
+      /* ignore */
+    }
   }
 
   function stopAudioOnly() {
     const el = audioRef.current;
     if (!el) return;
     el.pause();
+  }
+
+  function stopAllPlayback() {
+    stopSourceOnly();
+    stopAudioOnly();
+  }
+
+  function applyElementDuration(audioDur) {
+    if (!(audioDur > 0) || !Number.isFinite(audioDur)) return;
+    setDuration(audioDur);
+    setSamples((prev) => {
+      if (!prev?.overview?.mins?.length) {
+        return prev ? { ...prev, duration: audioDur } : prev;
+      }
+      return {
+        ...prev,
+        duration: audioDur,
+        overview: alignOverviewToDuration(prev.overview, prev.sampleRate, audioDur),
+      };
+    });
   }
 
   useEffect(() => {
@@ -80,7 +148,8 @@ export default function EditorPage() {
     playingRef.current = false;
     setZoomReady(false);
     setSamples(null);
-    stopAudioOnly();
+    bufferRef.current = null;
+    stopAllPlayback();
 
     (async () => {
       try {
@@ -104,29 +173,173 @@ export default function EditorPage() {
     [path, mediaRev]
   );
 
-  // Keep playback element pointed at current stream
   useEffect(() => {
     if (!streamUrl) return undefined;
-    const el = ensureAudioEl();
-    el.src = streamUrl;
-    return undefined;
-  }, [streamUrl]);
-
-  // Server-side peaks (ffmpeg) — avoids browser decodeAudioData OOM/hangs on large files
-  useEffect(() => {
-    if (!path || !streamUrl) return undefined;
 
     const ac = new AbortController();
     let cancelled = false;
     let progressTick = 0;
 
-    async function load() {
-      stopAudioOnly();
-      setPlaying(false);
-      playingRef.current = false;
-      setWaveLoading(true);
-      setWaveError('');
-      setSamples(null);
+    async function readBodyWithProgress(res) {
+      const total = Number(res.headers.get('content-length')) || 0;
+      if (!res.body?.getReader) {
+        const raw = await res.arrayBuffer();
+        if (!cancelled) {
+          setLoadProgress({
+            phase: 'download',
+            percent: 40,
+            partPercent: 100,
+            detail: t('editor.fileLoaded'),
+          });
+        }
+        return raw;
+      }
+      const reader = res.body.getReader();
+      const chunks = [];
+      let received = 0;
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        if (cancelled || ac.signal.aborted) {
+          try {
+            await reader.cancel();
+          } catch {
+            /* ignore */
+          }
+          throw new DOMException('Aborted', 'AbortError');
+        }
+        chunks.push(value);
+        received += value.byteLength;
+        if (total > 0) {
+          const part = Math.min(100, Math.round((received / total) * 100));
+          setLoadProgress({
+            phase: 'download',
+            percent: Math.min(40, Math.round(part * 0.4)),
+            partPercent: part,
+            detail: t('editor.loadingFile', {
+              current: (received / (1024 * 1024)).toFixed(1),
+              total: (total / (1024 * 1024)).toFixed(1),
+            }),
+          });
+        } else {
+          const part = Math.min(95, 8 + Math.round(Math.log10(received + 1) * 18));
+          setLoadProgress({
+            phase: 'download',
+            percent: Math.min(38, Math.round(part * 0.4)),
+            partPercent: part,
+            detail: t('editor.loadingFileMb', {
+              current: (received / (1024 * 1024)).toFixed(1),
+            }),
+          });
+        }
+      }
+      const out = new Uint8Array(received);
+      let offset = 0;
+      for (const chunk of chunks) {
+        out.set(chunk, offset);
+        offset += chunk.byteLength;
+      }
+      return out.buffer;
+    }
+
+    async function loadClientDecode() {
+      modeRef.current = 'webaudio';
+      const ctx = getAudioCtx();
+      setLoadProgress({
+        phase: 'download',
+        percent: 2,
+        partPercent: 0,
+        detail: t('editor.download'),
+      });
+
+      const res = await fetch(streamUrl, {
+        credentials: 'include',
+        cache: 'no-store',
+        signal: ac.signal,
+      });
+      if (!res.ok) throw new Error(t('editor.loadFailedStatus', { status: res.status }));
+      const raw = await readBodyWithProgress(res);
+      if (cancelled || ac.signal.aborted) return;
+
+      const estMs = Math.min(
+        180000,
+        Math.max(800, (raw.byteLength / (4 * 1024 * 1024)) * 1000)
+      );
+      const decodeStarted = performance.now();
+      setLoadProgress({
+        phase: 'decode',
+        percent: 40,
+        partPercent: 0,
+        detail: t('editor.decode'),
+      });
+      progressTick = window.setInterval(() => {
+        if (cancelled) return;
+        const elapsed = performance.now() - decodeStarted;
+        const part = Math.min(97, Math.round((1 - Math.exp(-elapsed / estMs)) * 100));
+        setLoadProgress({
+          phase: 'decode',
+          percent: 40 + Math.round(part * 0.15),
+          partPercent: part,
+          detail: t('editor.decode'),
+        });
+      }, 120);
+
+      let audio;
+      try {
+        if (ctx.state === 'suspended') await ctx.resume();
+        // decode in place — avoids doubling memory with .slice()
+        audio = await ctx.decodeAudioData(raw);
+      } finally {
+        window.clearInterval(progressTick);
+        progressTick = 0;
+      }
+      if (cancelled || ac.signal.aborted) return;
+
+      bufferRef.current = audio;
+      // Same channel data reference as playback buffer → sample-accurate sync
+      const data = audio.getChannelData(0);
+      const dur = audio.duration || data.length / audio.sampleRate;
+      setDuration(dur);
+
+      setLoadProgress({
+        phase: 'peaks',
+        percent: 55,
+        partPercent: 0,
+        detail: t('editor.buildPeaks0'),
+      });
+
+      const overview = await buildOverviewPeaks(
+        data,
+        (ratio) => {
+          if (cancelled) return;
+          const buildPct = Math.round(ratio * 100);
+          setLoadProgress({
+            phase: 'peaks',
+            percent: Math.min(99, 55 + Math.round(ratio * 44)),
+            partPercent: buildPct,
+            detail: t('editor.buildPeaks', { pct: buildPct }),
+          });
+        },
+        () => cancelled || ac.signal.aborted,
+        256
+      );
+      if (cancelled || ac.signal.aborted || !overview) return;
+
+      setSamples({ data, sampleRate: audio.sampleRate, duration: dur, overview });
+      setCursor(0);
+      setPlayhead(0);
+      playheadClockRef.current = 0;
+      setLoadProgress({
+        phase: 'done',
+        percent: 100,
+        partPercent: 100,
+        detail: t('editor.done'),
+      });
+    }
+
+    async function loadServerPeaks() {
+      modeRef.current = 'element';
+      bufferRef.current = null;
       setLoadProgress({
         phase: 'peaks',
         percent: 2,
@@ -138,7 +351,6 @@ export default function EditorPage() {
       progressTick = window.setInterval(() => {
         if (cancelled) return;
         const elapsed = performance.now() - started;
-        // Asymptotic progress while ffmpeg works — keeps moving past old 93% fake cap
         const part = Math.min(97, Math.round((1 - Math.exp(-elapsed / 12000)) * 100));
         setLoadProgress({
           phase: 'peaks',
@@ -148,35 +360,100 @@ export default function EditorPage() {
         });
       }, 150);
 
+      const data = await api.peaks(path);
+      if (cancelled || ac.signal.aborted) return;
+
+      const overview = {
+        mins: base64ToFloat32(data.mins),
+        maxs: base64ToFloat32(data.maxs),
+        bucketSize: data.bucketSize,
+        length: data.length,
+      };
+      const peakDur = Number(data.duration) || 0;
+      setDuration(peakDur);
+      setSamples({
+        data: null,
+        sampleRate: data.sampleRate,
+        duration: peakDur,
+        overview,
+      });
+
+      // Align peak timeline to the HTMLAudio clock (browser MP3 duration)
+      const el = ensureAudioEl();
+      el.src = streamUrl;
+
+      const syncFromElement = () => {
+        if (cancelled) return;
+        if (el.duration > 0 && Number.isFinite(el.duration)) {
+          applyElementDuration(el.duration);
+        }
+      };
+      el.addEventListener('loadedmetadata', syncFromElement);
+      el.addEventListener('durationchange', syncFromElement);
+      // In case metadata is already there
+      syncFromElement();
+
+      // Cleanup listeners when this load generation ends
+      ac.signal.addEventListener('abort', () => {
+        el.removeEventListener('loadedmetadata', syncFromElement);
+        el.removeEventListener('durationchange', syncFromElement);
+      });
+
+      setCursor(0);
+      setPlayhead(0);
+      playheadClockRef.current = 0;
+      setLoadProgress({
+        phase: 'done',
+        percent: 100,
+        partPercent: 100,
+        detail: t('editor.done'),
+      });
+    }
+
+    async function load() {
+      stopAllPlayback();
+      setPlaying(false);
+      playingRef.current = false;
+      setWaveLoading(true);
+      setWaveError('');
+      setSamples(null);
+      bufferRef.current = null;
+
       try {
-        const data = await api.peaks(path);
+        let size = 0;
+        try {
+          const head = await fetch(streamUrl, {
+            method: 'HEAD',
+            credentials: 'include',
+            cache: 'no-store',
+            signal: ac.signal,
+          });
+          size = Number(head.headers.get('content-length')) || 0;
+        } catch {
+          size = 0;
+        }
         if (cancelled || ac.signal.aborted) return;
 
-        const overview = {
-          mins: base64ToFloat32(data.mins),
-          maxs: base64ToFloat32(data.maxs),
-          bucketSize: data.bucketSize,
-          length: data.length,
-        };
-        const dur = Number(data.duration) || 0;
-        setDuration(dur);
-        setSamples({
-          data: null,
-          sampleRate: data.sampleRate,
-          duration: dur,
-          overview,
-        });
-        setCursor(0);
-        setPlayhead(0);
-        playheadClockRef.current = 0;
-        setLoadProgress({
-          phase: 'done',
-          percent: 100,
-          partPercent: 100,
-          detail: t('editor.done'),
-        });
+        if (size > 0 && size <= CLIENT_DECODE_MAX_BYTES) {
+          await loadClientDecode();
+        } else {
+          await loadServerPeaks();
+        }
       } catch (err) {
         if (cancelled || ac.signal.aborted || err?.name === 'AbortError') return;
+        // If client decode fails (OOM etc.), fall back to server peaks
+        if (modeRef.current === 'webaudio') {
+          try {
+            await loadServerPeaks();
+            return;
+          } catch (err2) {
+            if (cancelled || ac.signal.aborted || err2?.name === 'AbortError') return;
+            setWaveError(err2.message || err.message || t('editor.decodeFailed'));
+            setSamples(null);
+            setLoadProgress({ phase: '', percent: 0, partPercent: 0, detail: '' });
+            return;
+          }
+        }
         setWaveError(err.message || t('editor.decodeFailed'));
         setSamples(null);
         setLoadProgress({ phase: '', percent: 0, partPercent: 0, detail: '' });
@@ -191,31 +468,56 @@ export default function EditorPage() {
       cancelled = true;
       ac.abort();
       if (progressTick) window.clearInterval(progressTick);
-      stopAudioOnly();
+      stopAllPlayback();
     };
   }, [path, streamUrl, t]);
 
-  // Playhead from HTMLAudioElement
+  // Playhead clock
   useEffect(() => {
     if (!playing) return undefined;
     let raf = 0;
     let lastUi = 0;
     function tick(now) {
-      const el = audioRef.current;
-      if (el && playingRef.current) {
-        const tNow = el.currentTime || 0;
-        if (el.ended) {
-          playingRef.current = false;
-          const endT = duration || tNow;
-          playheadClockRef.current = endT;
-          setPlaying(false);
-          setPlayhead(endT);
-          setCursor(endT);
-        } else {
-          playheadClockRef.current = tNow;
-          if (now - lastUi > 50) {
-            lastUi = now;
-            setPlayhead(tNow);
+      if (!playingRef.current) return;
+
+      if (modeRef.current === 'webaudio') {
+        const ctx = ctxRef.current;
+        const buf = bufferRef.current;
+        if (ctx && buf) {
+          const { ctxTime, offset } = playOriginRef.current;
+          const tNow = offset + (ctx.currentTime - ctxTime);
+          if (tNow >= buf.duration) {
+            stopSourceOnly();
+            playingRef.current = false;
+            playheadClockRef.current = buf.duration;
+            setPlaying(false);
+            setPlayhead(buf.duration);
+            setCursor(buf.duration);
+          } else {
+            playheadClockRef.current = tNow;
+            if (now - lastUi > 50) {
+              lastUi = now;
+              setPlayhead(tNow);
+            }
+          }
+        }
+      } else {
+        const el = audioRef.current;
+        if (el) {
+          const tNow = el.currentTime || 0;
+          if (el.ended) {
+            playingRef.current = false;
+            const endT = durationRef.current || tNow;
+            playheadClockRef.current = endT;
+            setPlaying(false);
+            setPlayhead(endT);
+            setCursor(endT);
+          } else {
+            playheadClockRef.current = tNow;
+            if (now - lastUi > 50) {
+              lastUi = now;
+              setPlayhead(tNow);
+            }
           }
         }
       }
@@ -223,15 +525,50 @@ export default function EditorPage() {
     }
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [playing, duration]);
+  }, [playing]);
 
   async function playFromCursor() {
-    const el = ensureAudioEl();
-    if (!duration || !streamUrl) return;
-
+    if (!duration) return;
     const start = Math.min(Math.max(0, cursor), Math.max(0, duration - 0.02));
+
+    if (modeRef.current === 'webaudio') {
+      const ctx = getAudioCtx();
+      const buf = bufferRef.current;
+      if (!buf) return;
+      try {
+        if (ctx.state === 'suspended') await ctx.resume();
+      } catch (err) {
+        setError(err.message || t('editor.audioCtxFailed'));
+        return;
+      }
+      stopSourceOnly();
+      const source = ctx.createBufferSource();
+      source.buffer = buf;
+      source.connect(ctx.destination);
+      source.onended = () => {
+        if (sourceRef.current !== source) return;
+        sourceRef.current = null;
+        if (!playingRef.current) return;
+        playingRef.current = false;
+        setPlaying(false);
+        const endT = buf.duration;
+        setPlayhead(endT);
+        setCursor(endT);
+      };
+      playOriginRef.current = { ctxTime: ctx.currentTime, offset: start };
+      sourceRef.current = source;
+      source.start(0, start);
+      playheadClockRef.current = start;
+      setPlayhead(start);
+      playingRef.current = true;
+      setPlaying(true);
+      return;
+    }
+
+    const el = ensureAudioEl();
     try {
       if (el.getAttribute('src') !== streamUrl) el.src = streamUrl;
+      if (el.duration > 0) applyElementDuration(el.duration);
       el.currentTime = start;
       await el.play();
       playheadClockRef.current = start;
@@ -246,12 +583,19 @@ export default function EditorPage() {
   }
 
   function stopPlayback() {
-    const el = audioRef.current;
     let tNow = cursor;
-    if (el && playingRef.current) {
-      tNow = Math.min(duration, Math.max(0, el.currentTime || 0));
+    if (playingRef.current) {
+      if (modeRef.current === 'webaudio') {
+        const ctx = ctxRef.current;
+        if (ctx) {
+          const { ctxTime, offset } = playOriginRef.current;
+          tNow = Math.min(duration, Math.max(0, offset + (ctx.currentTime - ctxTime)));
+        }
+      } else if (audioRef.current) {
+        tNow = Math.min(duration, Math.max(0, audioRef.current.currentTime || 0));
+      }
     }
-    stopAudioOnly();
+    stopAllPlayback();
     playingRef.current = false;
     setPlaying(false);
     playheadClockRef.current = tNow;
@@ -282,7 +626,11 @@ export default function EditorPage() {
 
   useEffect(() => {
     return () => {
-      stopAudioOnly();
+      stopAllPlayback();
+      bufferRef.current = null;
+      const ctx = ctxRef.current;
+      ctxRef.current = null;
+      if (ctx) ctx.close().catch(() => {});
       const el = audioRef.current;
       audioRef.current = null;
       if (el) {
@@ -301,12 +649,39 @@ export default function EditorPage() {
     setCursor(next);
     setPlayhead(next);
     playheadClockRef.current = next;
+
+    if (modeRef.current === 'webaudio') {
+      if (playingRef.current) {
+        const ctx = ctxRef.current;
+        const buf = bufferRef.current;
+        if (!ctx || !buf) return;
+        stopSourceOnly();
+        const source = ctx.createBufferSource();
+        source.buffer = buf;
+        source.connect(ctx.destination);
+        source.onended = () => {
+          if (sourceRef.current !== source) return;
+          sourceRef.current = null;
+          if (!playingRef.current) return;
+          playingRef.current = false;
+          setPlaying(false);
+          playheadClockRef.current = buf.duration;
+          setPlayhead(buf.duration);
+          setCursor(buf.duration);
+        };
+        playOriginRef.current = { ctxTime: ctx.currentTime, offset: next };
+        sourceRef.current = source;
+        source.start(0, next);
+      }
+      return;
+    }
+
     const el = audioRef.current;
     if (el) {
       try {
         el.currentTime = next;
       } catch {
-        /* ignore seek errors while not loaded */
+        /* ignore */
       }
     }
   }

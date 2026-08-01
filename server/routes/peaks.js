@@ -14,7 +14,7 @@ function float32ToBase64(arr) {
 
 /**
  * Build waveform overview peaks with ffmpeg (mono downsample + streaming buckets).
- * Avoids browser decodeAudioData for large files.
+ * Duration is derived from actual PCM samples so it matches the peak timeline.
  *
  * GET /api/audio/peaks?path=
  */
@@ -29,16 +29,15 @@ export async function getPeaks(req, res) {
     }
 
     const mm = await parseFile(filePath, { duration: true });
-    const duration = Number(mm.format?.duration) || 0;
-    if (!(duration > 0)) {
+    const metaDuration = Number(mm.format?.duration) || 0;
+    if (!(metaDuration > 0)) {
       return res.status(400).json({ error: 'Could not determine duration' });
     }
 
-    const totalSamples = Math.max(1, Math.round(duration * SAMPLE_RATE));
-    // ~40 buckets/sec, clamped
-    const bucketCount = Math.min(MAX_BUCKETS, Math.max(800, Math.ceil(duration * 40)));
-    const bucketSize = Math.max(1, Math.ceil(totalSamples / bucketCount));
-    const n = Math.ceil(totalSamples / bucketSize);
+    const estimateSamples = Math.max(1, Math.round(metaDuration * SAMPLE_RATE));
+    const bucketCount = Math.min(MAX_BUCKETS, Math.max(800, Math.ceil(metaDuration * 40)));
+    const bucketSize = Math.max(1, Math.ceil(estimateSamples / bucketCount));
+    const n = Math.ceil(estimateSamples / bucketSize);
 
     const mins = new Float32Array(n);
     const maxs = new Float32Array(n);
@@ -58,6 +57,8 @@ export async function getPeaks(req, res) {
       'pipe:1',
     ];
 
+    let samplesRead = 0;
+
     await new Promise((resolve, reject) => {
       const proc = spawn(config.ffmpegPath, args, {
         windowsHide: true,
@@ -66,7 +67,6 @@ export async function getPeaks(req, res) {
 
       let stderr = '';
       let leftover = Buffer.alloc(0);
-      let sampleIndex = 0;
       let bucketIndex = 0;
       let curMin = Number.POSITIVE_INFINITY;
       let curMax = Number.NEGATIVE_INFINITY;
@@ -90,12 +90,12 @@ export async function getPeaks(req, res) {
 
       function pushSample(v) {
         if (!Number.isFinite(v)) v = 0;
-        const bi = Math.min(n - 1, Math.floor(sampleIndex / bucketSize));
+        const bi = Math.min(n - 1, Math.floor(samplesRead / bucketSize));
         while (bucketIndex < bi) finishBucket();
         if (v < curMin) curMin = v;
         if (v > curMax) curMax = v;
         inBucket += 1;
-        sampleIndex += 1;
+        samplesRead += 1;
       }
 
       function done(err) {
@@ -127,12 +127,16 @@ export async function getPeaks(req, res) {
       });
     });
 
+    const length = Math.max(1, samplesRead);
+    const duration = length / SAMPLE_RATE;
+
     res.json({
       path: rel,
       duration,
+      metaDuration,
       sampleRate: SAMPLE_RATE,
       bucketSize,
-      length: totalSamples,
+      length,
       mins: float32ToBase64(mins),
       maxs: float32ToBase64(maxs),
     });
