@@ -34,7 +34,12 @@ export default function EditorPage() {
   const [samples, setSamples] = useState(null);
   const [waveLoading, setWaveLoading] = useState(false);
   const [waveError, setWaveError] = useState('');
-  const [loadProgress, setLoadProgress] = useState({ phase: '', percent: 0, detail: '' });
+  const [loadProgress, setLoadProgress] = useState({
+    phase: '',
+    percent: 0,
+    partPercent: 0,
+    detail: '',
+  });
 
   // Same AudioContext + AudioBuffer for waveform peaks and playback → perfect sync
   const ctxRef = useRef(null);
@@ -123,7 +128,12 @@ export default function EditorPage() {
       if (!res.body?.getReader) {
         const raw = await res.arrayBuffer();
         if (!cancelled) {
-          setLoadProgress({ phase: 'download', percent: 40, detail: t('editor.fileLoaded') });
+          setLoadProgress({
+            phase: 'download',
+            percent: 40,
+            partPercent: 100,
+            detail: t('editor.fileLoaded'),
+          });
         }
         return raw;
       }
@@ -146,19 +156,22 @@ export default function EditorPage() {
         chunks.push(value);
         received += value.byteLength;
         if (total > 0) {
-          const pct = Math.min(40, Math.max(6, Math.round((received / total) * 40)));
+          const part = Math.min(100, Math.round((received / total) * 100));
           const mb = (received / (1024 * 1024)).toFixed(1);
           const totalMb = (total / (1024 * 1024)).toFixed(1);
           setLoadProgress({
             phase: 'download',
-            percent: pct,
+            percent: Math.min(40, Math.round(part * 0.4)),
+            partPercent: part,
             detail: t('editor.loadingFile', { current: mb, total: totalMb }),
           });
         } else {
           const mb = (received / (1024 * 1024)).toFixed(1);
+          const part = Math.min(95, 8 + Math.round(Math.log10(received + 1) * 18));
           setLoadProgress({
             phase: 'download',
-            percent: Math.min(38, 6 + Math.round(Math.log10(received + 1) * 8)),
+            percent: Math.min(38, Math.round(part * 0.4)),
+            partPercent: part,
             detail: t('editor.loadingFileMb', { current: mb }),
           });
         }
@@ -181,7 +194,12 @@ export default function EditorPage() {
       });
       if (!res.ok) throw new Error(t('editor.loadFailedStatus', { status: res.status }));
       if (!cancelled) {
-        setLoadProgress({ phase: 'download', percent: 5, detail: t('editor.download') });
+        setLoadProgress({
+          phase: 'download',
+          percent: 2,
+          partPercent: 0,
+          detail: t('editor.download'),
+        });
       }
       return readBodyWithProgress(res);
     }
@@ -194,7 +212,12 @@ export default function EditorPage() {
       setWaveError('');
       setSamples(null);
       bufferRef.current = null;
-      setLoadProgress({ phase: 'download', percent: 2, detail: t('editor.connecting') });
+      setLoadProgress({
+        phase: 'download',
+        percent: 1,
+        partPercent: 0,
+        detail: t('editor.connecting'),
+      });
 
       try {
         let raw = null;
@@ -205,7 +228,8 @@ export default function EditorPage() {
             if (attempt > 1) {
               setLoadProgress({
                 phase: 'download',
-                percent: 2,
+                percent: 1,
+                partPercent: 0,
                 detail: t('editor.retry', { attempt }),
               });
               await delay(150 * attempt);
@@ -224,14 +248,20 @@ export default function EditorPage() {
 
         const estMs = Math.min(45000, Math.max(600, (raw.byteLength / (6 * 1024 * 1024)) * 1000));
         const decodeStarted = performance.now();
-        setLoadProgress({ phase: 'decode', percent: 42, detail: t('editor.decode') });
+        setLoadProgress({
+          phase: 'decode',
+          percent: 40,
+          partPercent: 0,
+          detail: t('editor.decode'),
+        });
         decodeTick = window.setInterval(() => {
           if (cancelled) return;
           const progress = Math.min(0.93, (performance.now() - decodeStarted) / estMs);
-          const pct = 42 + Math.round(progress * 13);
+          const part = Math.round(progress * 100);
           setLoadProgress({
             phase: 'decode',
-            percent: pct,
+            percent: 40 + Math.round(progress * 15),
+            partPercent: part,
             detail: t('editor.decode'),
           });
         }, 120);
@@ -255,7 +285,8 @@ export default function EditorPage() {
 
         setLoadProgress({
           phase: 'peaks',
-          percent: 56,
+          percent: 55,
+          partPercent: 0,
           detail: t('editor.buildPeaks0'),
         });
 
@@ -264,10 +295,10 @@ export default function EditorPage() {
           (ratio) => {
             if (cancelled) return;
             const buildPct = Math.round(ratio * 100);
-            const pct = 56 + Math.round(ratio * 43);
             setLoadProgress({
               phase: 'peaks',
-              percent: Math.min(99, pct),
+              percent: Math.min(99, 55 + Math.round(ratio * 44)),
+              partPercent: buildPct,
               detail: t('editor.buildPeaks', { pct: buildPct }),
             });
           },
@@ -280,12 +311,17 @@ export default function EditorPage() {
         setCursor(0);
         setPlayhead(0);
         playheadClockRef.current = 0;
-        setLoadProgress({ phase: 'done', percent: 100, detail: t('editor.done') });
+        setLoadProgress({
+          phase: 'done',
+          percent: 100,
+          partPercent: 100,
+          detail: t('editor.done'),
+        });
       } catch (err) {
         if (cancelled || ac.signal.aborted || err?.name === 'AbortError') return;
         setWaveError(err.message || t('editor.decodeFailed'));
         setSamples(null);
-        setLoadProgress({ phase: '', percent: 0, detail: '' });
+        setLoadProgress({ phase: '', percent: 0, partPercent: 0, detail: '' });
       } finally {
         if (decodeTick) window.clearInterval(decodeTick);
         if (!cancelled && !ac.signal.aborted) setWaveLoading(false);

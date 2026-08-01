@@ -10,7 +10,7 @@ function formatTime(sec) {
 }
 
 const MIN_ZOOM = 1;
-const MAX_ZOOM = 16;
+const MAX_ZOOM = 64;
 const HEIGHT = 220;
 
 function clampZoom(value) {
@@ -515,10 +515,17 @@ export default function WaveformCrop({
   }
 
   const scrollRatio = maxViewStart > 0 ? viewStart / maxViewStart : 0;
-  const percent = Math.min(100, Math.max(0, Number(loadProgress?.percent) || 0));
+  const overallPercent = Math.min(100, Math.max(0, Number(loadProgress?.percent) || 0));
+  const partPercent = Math.min(100, Math.max(0, Number(loadProgress?.partPercent) || 0));
   const progressLabel =
     loadProgress?.detail ||
     (loading ? t('wave.loading') : '');
+  const phaseLabel =
+    loadProgress?.phase === 'peaks'
+      ? t('wave.peaks')
+      : loadProgress?.phase === 'decode'
+        ? t('wave.decoding')
+        : t('wave.fileLoading');
 
   return (
     <div className="wave-wrap" ref={wrapRef}>
@@ -568,32 +575,49 @@ export default function WaveformCrop({
         {loading && (
           <div className="wave-load-overlay" role="status" aria-live="polite">
             <div className="wave-load-card">
-              <div className="wave-load-label">
-                <span>{progressLabel}</span>
-                <span className="wave-load-pct">{percent}%</span>
-              </div>
-              <div
-                className="wave-load-track"
-                role="progressbar"
-                aria-valuemin={0}
-                aria-valuemax={100}
-                aria-valuenow={percent}
-                aria-label={t('wave.progress')}
-              >
+              <p className="wave-load-detail">{progressLabel}</p>
+              <p className="wave-load-phases muted small">{phaseLabel}</p>
+
+              <div className="wave-load-row">
+                <div className="wave-load-label">
+                  <span>{t('wave.progressOverall')}</span>
+                  <span className="wave-load-pct">{overallPercent}%</span>
+                </div>
                 <div
-                  className={`wave-load-fill${
-                    loadProgress?.phase === 'decode' || loadProgress?.phase === 'peaks' ? ' decode' : ''
-                  }`}
-                  style={{ width: `${percent}%` }}
-                />
+                  className="wave-load-track"
+                  role="progressbar"
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-valuenow={overallPercent}
+                  aria-label={t('wave.progressOverall')}
+                >
+                  <div className="wave-load-fill" style={{ width: `${overallPercent}%` }} />
+                </div>
               </div>
-              <p className="wave-load-phases muted small">
-                {loadProgress?.phase === 'peaks'
-                  ? t('wave.peaks')
-                  : loadProgress?.phase === 'decode'
-                    ? t('wave.decoding')
-                    : t('wave.fileLoading')}
-              </p>
+
+              <div className="wave-load-row">
+                <div className="wave-load-label">
+                  <span>{t('wave.progressPart')}</span>
+                  <span className="wave-load-pct">{partPercent}%</span>
+                </div>
+                <div
+                  className="wave-load-track wave-load-track-part"
+                  role="progressbar"
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-valuenow={partPercent}
+                  aria-label={t('wave.progressPart')}
+                >
+                  <div
+                    className={`wave-load-fill${
+                      loadProgress?.phase === 'decode' || loadProgress?.phase === 'peaks'
+                        ? ' decode'
+                        : ''
+                    }`}
+                    style={{ width: `${partPercent}%` }}
+                  />
+                </div>
+              </div>
             </div>
           </div>
         )}
@@ -618,7 +642,8 @@ export default function WaveformCrop({
       <div className="wave-meta">
         {loading && (
           <span className="muted small">
-            {progressLabel} ({percent}%)
+            {progressLabel} · {t('wave.progressOverall')} {overallPercent}% · {t('wave.progressPart')}{' '}
+            {partPercent}%
           </span>
         )}
         {loadError && <span className="error small">{loadError}</span>}
