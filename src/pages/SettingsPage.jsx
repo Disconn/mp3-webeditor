@@ -337,7 +337,7 @@ export default function SettingsPage() {
                   <input
                     type="range"
                     min={1}
-                    max={16}
+                    max={64}
                     step={1}
                     value={defaultWaveZoom}
                     onChange={(e) => setDefaultWaveZoom(Number(e.target.value))}
@@ -346,11 +346,11 @@ export default function SettingsPage() {
                     className="num"
                     type="number"
                     min={1}
-                    max={16}
+                    max={64}
                     step={1}
                     value={defaultWaveZoom}
                     onChange={(e) =>
-                      setDefaultWaveZoom(Math.min(16, Math.max(1, Number(e.target.value) || 1)))
+                      setDefaultWaveZoom(Math.min(64, Math.max(1, Number(e.target.value) || 1)))
                     }
                   />
                   <span className="unit">×</span>

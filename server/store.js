@@ -79,7 +79,7 @@ export function loadSettings() {
 function clampWaveZoom(value) {
   const n = Number(value);
   if (!Number.isFinite(n)) return 1;
-  return Math.min(16, Math.max(1, Math.round(n * 10) / 10));
+  return Math.min(64, Math.max(1, Math.round(n * 10) / 10));
 }
 
 function clampUiLanguage(value) {
