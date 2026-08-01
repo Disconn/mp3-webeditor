@@ -8,6 +8,18 @@ function claimPlayback(id) {
   for (const fn of claimListeners) fn(id);
 }
 
+function unloadAudio(audio) {
+  if (!audio) return;
+  audio.pause();
+  audio.removeAttribute('src');
+  // Abort network + release decoded buffer
+  try {
+    audio.load();
+  } catch {
+    /* ignore */
+  }
+}
+
 function formatTime(sec) {
   if (!Number.isFinite(sec) || sec < 0) return '0:00';
   const m = Math.floor(sec / 60);
@@ -16,12 +28,14 @@ function formatTime(sec) {
 }
 
 /**
- * Compact per-row MP3 player. Only one row plays at a time.
+ * Compact per-row MP3 player. Only one row plays at a time;
+ * inactive players unload their media to free memory.
  */
 export default function RowPlayer({ path }) {
   const t = useT();
   const audioRef = useRef(null);
   const idRef = useRef(`player-${path}`);
+  const streamUrl = api.streamUrl(path);
   const [playing, setPlaying] = useState(false);
   const [current, setCurrent] = useState(0);
   const [duration, setDuration] = useState(0);
@@ -29,17 +43,27 @@ export default function RowPlayer({ path }) {
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
+    idRef.current = `player-${path}`;
+  }, [path]);
+
+  useEffect(() => {
     const id = idRef.current;
     function onClaim(activeId) {
       if (activeId === id) return;
       const audio = audioRef.current;
       if (!audio) return;
-      audio.pause();
+      unloadAudio(audio);
       setPlaying(false);
+      setCurrent(0);
+      setDuration(0);
+      setReady(false);
     }
     claimListeners.add(onClaim);
-    return () => claimListeners.delete(onClaim);
-  }, []);
+    return () => {
+      claimListeners.delete(onClaim);
+      unloadAudio(audioRef.current);
+    };
+  }, [path]);
 
   useEffect(() => {
     const audio = audioRef.current;
@@ -60,7 +84,9 @@ export default function RowPlayer({ path }) {
     function onEnded() {
       setPlaying(false);
       setCurrent(0);
-      audio.currentTime = 0;
+      unloadAudio(audio);
+      setDuration(0);
+      setReady(false);
     }
     function onPlay() {
       setPlaying(true);
@@ -93,6 +119,9 @@ export default function RowPlayer({ path }) {
       return;
     }
     claimPlayback(idRef.current);
+    if (audio.getAttribute('src') !== streamUrl) {
+      audio.src = streamUrl;
+    }
     try {
       await audio.play();
     } catch {
@@ -103,15 +132,16 @@ export default function RowPlayer({ path }) {
   function stop() {
     const audio = audioRef.current;
     if (!audio) return;
-    audio.pause();
-    audio.currentTime = 0;
+    unloadAudio(audio);
     setCurrent(0);
+    setDuration(0);
+    setReady(false);
     setPlaying(false);
   }
 
   return (
     <div className="row-player" onClick={(e) => e.stopPropagation()}>
-      <audio ref={audioRef} src={api.streamUrl(path)} preload="none" />
+      <audio ref={audioRef} preload="none" />
       <button
         type="button"
         className="btn ghost tiny row-player-btn"
@@ -127,7 +157,7 @@ export default function RowPlayer({ path }) {
         onClick={stop}
         title={t('player.stop')}
         aria-label={t('player.stop')}
-        disabled={!playing && current === 0}
+        disabled={!playing && current === 0 && !ready}
       >
         ■
       </button>
