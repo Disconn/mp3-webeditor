@@ -23,19 +23,6 @@ function base64ToFloat32(b64) {
   return new Float32Array(bytes.buffer);
 }
 
-/** Stretch overview buckets evenly across a playback duration (HTMLAudio timeline). */
-function alignOverviewToDuration(overview, sampleRate, audioDur) {
-  if (!overview?.mins?.length || !(audioDur > 0) || !(sampleRate > 0)) return overview;
-  const length = Math.max(1, Math.round(audioDur * sampleRate));
-  const bucketSize = Math.max(1, Math.ceil(length / overview.mins.length));
-  return {
-    mins: overview.mins,
-    maxs: overview.maxs,
-    bucketSize,
-    length,
-  };
-}
-
 export default function EditorPage() {
   const t = useT();
   const [params] = useSearchParams();
@@ -118,21 +105,6 @@ export default function EditorPage() {
   function stopAllPlayback() {
     stopSourceOnly();
     stopAudioOnly();
-  }
-
-  function applyElementDuration(audioDur) {
-    if (!(audioDur > 0) || !Number.isFinite(audioDur)) return;
-    setDuration(audioDur);
-    setSamples((prev) => {
-      if (!prev?.overview?.mins?.length) {
-        return prev ? { ...prev, duration: audioDur } : prev;
-      }
-      return {
-        ...prev,
-        duration: audioDur,
-        overview: alignOverviewToDuration(prev.overview, prev.sampleRate, audioDur),
-      };
-    });
   }
 
   useEffect(() => {
@@ -378,26 +350,10 @@ export default function EditorPage() {
         overview,
       });
 
-      // Align peak timeline to the HTMLAudio clock (browser MP3 duration)
+      // Prefetch stream so play/seek are ready; timeline stays on ffmpeg peak clock
+      // (do not stretch peaks to HTMLAudio.duration — VBR headers are often wrong).
       const el = ensureAudioEl();
       el.src = streamUrl;
-
-      const syncFromElement = () => {
-        if (cancelled) return;
-        if (el.duration > 0 && Number.isFinite(el.duration)) {
-          applyElementDuration(el.duration);
-        }
-      };
-      el.addEventListener('loadedmetadata', syncFromElement);
-      el.addEventListener('durationchange', syncFromElement);
-      // In case metadata is already there
-      syncFromElement();
-
-      // Cleanup listeners when this load generation ends
-      ac.signal.addEventListener('abort', () => {
-        el.removeEventListener('loadedmetadata', syncFromElement);
-        el.removeEventListener('durationchange', syncFromElement);
-      });
 
       setCursor(0);
       setPlayhead(0);
@@ -568,7 +524,6 @@ export default function EditorPage() {
     const el = ensureAudioEl();
     try {
       if (el.getAttribute('src') !== streamUrl) el.src = streamUrl;
-      if (el.duration > 0) applyElementDuration(el.duration);
       el.currentTime = start;
       await el.play();
       playheadClockRef.current = start;

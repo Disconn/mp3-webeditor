@@ -61,17 +61,19 @@ export function peaksFromOverview(overview, sampleRate, startSec, endSec, bars) 
   const maxs = new Float32Array(n);
   if (!overview?.mins?.length || !sampleRate) return { mins, maxs };
 
-  const startSample = Math.max(0, Math.floor(startSec * sampleRate));
-  const endSample = Math.min(overview.length, Math.ceil(endSec * sampleRate));
-  const span = Math.max(1, endSample - startSample);
-  const { bucketSize, mins: oMins, maxs: oMaxs } = overview;
+  const { mins: oMins, maxs: oMaxs, length } = overview;
   const bucketCount = oMins.length;
+  const totalSamples = length > 0 ? length : bucketCount;
+  // Map via sample fraction so float bucketSize / downsampled overviews stay linear
+  const startSample = Math.max(0, Math.floor(startSec * sampleRate));
+  const endSample = Math.min(totalSamples, Math.ceil(endSec * sampleRate));
+  const span = Math.max(1, endSample - startSample);
 
   for (let i = 0; i < n; i += 1) {
     const a = startSample + Math.floor((i / n) * span);
     const b = Math.max(a + 1, startSample + Math.floor(((i + 1) / n) * span));
-    let b0 = Math.floor(a / bucketSize);
-    let b1 = Math.ceil(b / bucketSize);
+    let b0 = Math.floor((a / totalSamples) * bucketCount);
+    let b1 = Math.ceil((b / totalSamples) * bucketCount);
     b0 = Math.max(0, Math.min(bucketCount - 1, b0));
     b1 = Math.max(b0 + 1, Math.min(bucketCount, b1));
     let min = oMins[b0];
