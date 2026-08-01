@@ -73,6 +73,10 @@ export const api = {
     fetch(`/api/audio/duration?path=${encodeURIComponent(path)}`, {
       credentials: 'include',
     }).then(parse),
+  peaks: (path) =>
+    fetch(`/api/audio/peaks?path=${encodeURIComponent(path)}`, {
+      credentials: 'include',
+    }).then(parse),
   crop: (path, trimStart, trimEnd) =>
     fetch('/api/audio/crop', {
       method: 'POST',

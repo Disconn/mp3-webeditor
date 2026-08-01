@@ -134,8 +134,9 @@ export const MESSAGES = {
     'editor.decode': 'Wellenform dekodieren…',
     'editor.buildPeaks': 'Wellenform aufbauen… {pct}%',
     'editor.buildPeaks0': 'Wellenform aufbauen… 0%',
+    'editor.peaksBuilding': 'Wellenform wird serverseitig berechnet…',
     'editor.done': 'Fertig',
-    'editor.decodeFailed': 'Audio dekodieren fehlgeschlagen',
+    'editor.decodeFailed': 'Wellenform konnte nicht geladen werden',
     'editor.audioCtxFailed': 'AudioContext konnte nicht gestartet werden',
 
     'wave.loading': 'Wellenform laden…',
@@ -339,8 +340,9 @@ export const MESSAGES = {
     'editor.decode': 'Decoding waveform…',
     'editor.buildPeaks': 'Building waveform… {pct}%',
     'editor.buildPeaks0': 'Building waveform… 0%',
+    'editor.peaksBuilding': 'Building waveform on server…',
     'editor.done': 'Done',
-    'editor.decodeFailed': 'Failed to decode audio',
+    'editor.decodeFailed': 'Failed to load waveform',
     'editor.audioCtxFailed': 'Could not start AudioContext',
 
     'wave.loading': 'Loading waveform…',

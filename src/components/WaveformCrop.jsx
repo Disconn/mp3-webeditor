@@ -176,15 +176,17 @@ export default function WaveformCrop({
 
     const mid = height / 2;
 
-    if (samples?.data?.length && visibleDuration > 0) {
+    if ((samples?.data?.length || samples?.overview?.mins?.length) && visibleDuration > 0) {
       const cacheKey = layerKey;
       let mins = peaksCacheRef.current.mins;
       let maxs = peaksCacheRef.current.maxs;
       if (peaksCacheRef.current.key !== cacheKey || !mins || !maxs) {
-        const samplesInView = visibleDuration * samples.sampleRate;
+        const samplesInView = visibleDuration * (samples.sampleRate || 1);
         const samplesPerBar = samplesInView / bars;
         const useOverview =
-          samples.overview && samplesPerBar > (samples.overview.bucketSize || 256) * 0.75;
+          Boolean(samples.overview?.mins?.length) &&
+          (!samples.data?.length ||
+            samplesPerBar > (samples.overview.bucketSize || 256) * 0.75);
         ({ mins, maxs } = useOverview
           ? peaksFromOverview(samples.overview, samples.sampleRate, viewStart, viewEnd, bars)
           : peaksForWindow(samples.data, samples.sampleRate, viewStart, viewEnd, bars));
