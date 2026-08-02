@@ -39,6 +39,10 @@ export default function WaveformCrop({
   playheadClockRef = null,
   playing = false,
   initialZoom = 1,
+  chapters = [],
+  activeChapterId = null,
+  onAddChapter = null,
+  onSelectChapter = null,
 }) {
   const t = useT();
   const canvasRef = useRef(null);
@@ -147,11 +151,13 @@ export default function WaveformCrop({
       viewStart.toFixed(5),
       viewEnd.toFixed(5),
       bars,
-      trimStart,
-      keepEnd,
+      trimStart.toFixed(3),
+      keepEnd.toFixed(3),
       zoom,
       bw,
       bh,
+      (chapters || []).map((c) => `${c.id}:${Number(c.start).toFixed(3)}:${c.title || ''}`).join('|'),
+      activeChapterId || '',
     ].join('|');
 
     let layer = waveLayerRef.current;
@@ -262,6 +268,42 @@ export default function WaveformCrop({
 
     drawHandle(trimStart, formatTime(trimStart));
     drawHandle(keepEnd, formatTime(keepEnd));
+
+    // Chapter markers
+    if (chapters?.length) {
+      g.font = '10px DM Sans, sans-serif';
+      for (const ch of chapters) {
+        const t0 = Number(ch.start);
+        if (!Number.isFinite(t0) || t0 < viewStart - 0.05 || t0 > viewEnd + 0.05) continue;
+        const x = timeToX(t0);
+        const active = ch.id === activeChapterId;
+        g.strokeStyle = active ? '#7eb6ff' : '#6ea8fe99';
+        g.lineWidth = active ? 2 : 1.25;
+        g.setLineDash(active ? [] : [3, 3]);
+        g.beginPath();
+        g.moveTo(x, 0);
+        g.lineTo(x, height);
+        g.stroke();
+        g.setLineDash([]);
+        g.fillStyle = active ? '#7eb6ff' : '#9ec5fe';
+        g.beginPath();
+        g.moveTo(x, height);
+        g.lineTo(x - 5, height - 9);
+        g.lineTo(x + 5, height - 9);
+        g.closePath();
+        g.fill();
+        const label = String(ch.title || '').slice(0, 28);
+        if (label) {
+          const tw = g.measureText(label).width;
+          const lx = Math.min(Math.max(x + 4, 2), width - tw - 4);
+          g.fillStyle = 'rgba(8,12,14,0.72)';
+          g.fillRect(lx - 2, 2, tw + 4, 14);
+          g.fillStyle = active ? '#e8f1ff' : '#c5d9f5';
+          g.fillText(label, lx, 13);
+        }
+      }
+    }
+
     waveLayerKeyRef.current = layerKey;
     return layer;
   }, [
@@ -274,6 +316,8 @@ export default function WaveformCrop({
     viewStart,
     visibleDuration,
     timeToX,
+    chapters,
+    activeChapterId,
   ]);
 
   const paint = useCallback(() => {
@@ -453,10 +497,36 @@ export default function WaveformCrop({
       /* ignore */
     }
 
-    if (wasClick && onCursorChange && timelineDuration) {
+    if (wasClick && timelineDuration) {
       followHeadRef.current = true;
-      onCursorChange(Math.min(Math.max(0, clientToTime(e.clientX)), timelineDuration));
+      const time = Math.min(Math.max(0, clientToTime(e.clientX)), timelineDuration);
+      if (chapters?.length && onSelectChapter) {
+        const rect = canvasRef.current.getBoundingClientRect();
+        const localX = e.clientX - rect.left;
+        let best = null;
+        let bestDist = 8;
+        for (const ch of chapters) {
+          const d = Math.abs(localX - timeToX(Number(ch.start)));
+          if (d < bestDist) {
+            bestDist = d;
+            best = ch;
+          }
+        }
+        if (best) {
+          onSelectChapter(best.id, Number(best.start));
+          return;
+        }
+      }
+      if (onCursorChange) onCursorChange(time);
     }
+  }
+
+  function onCanvasDoubleClick(e) {
+    if (!onAddChapter || !timelineDuration || loading) return;
+    e.preventDefault();
+    followHeadRef.current = true;
+    const time = Math.min(Math.max(0, clientToTime(e.clientX)), timelineDuration);
+    onAddChapter(time);
   }
 
   function zoomAt(nextZoom, anchorClientX) {
@@ -573,6 +643,7 @@ export default function WaveformCrop({
           onPointerMove={onPointerMove}
           onPointerUp={onPointerUp}
           onPointerCancel={onPointerUp}
+          onDoubleClick={onCanvasDoubleClick}
         />
         {loading && (
           <div className="wave-load-overlay" role="status" aria-live="polite">

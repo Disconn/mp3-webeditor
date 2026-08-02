@@ -33,6 +33,7 @@ import {
 import { fetchYtCover, fetchCoverFromUrl, streamCover, saveCover } from './routes/cover.js';
 import { cropMp3, getDuration, streamAudio } from './routes/crop.js';
 import { getPeaks } from './routes/peaks.js';
+import { getChapters, putChapters } from './routes/chapters.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -106,6 +107,8 @@ app.get('/api/audio/duration', requireAuth, getDuration);
 app.get('/api/audio/peaks', requireAuth, getPeaks);
 app.get('/api/audio/stream', requireAuth, streamAudio);
 app.post('/api/audio/crop', requireAuth, cropMp3);
+app.get('/api/chapters', requireAuth, getChapters);
+app.put('/api/chapters', requireAuth, putChapters);
 
 if (config.isProd) {
   const dist = path.join(__dirname, '..', 'dist');

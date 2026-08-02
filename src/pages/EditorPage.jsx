@@ -44,6 +44,10 @@ export default function EditorPage() {
   const [samples, setSamples] = useState(null);
   const [waveLoading, setWaveLoading] = useState(false);
   const [waveError, setWaveError] = useState('');
+  const [chapters, setChapters] = useState([]);
+  const [chaptersDirty, setChaptersDirty] = useState(false);
+  const [chaptersBusy, setChaptersBusy] = useState(false);
+  const [activeChapterId, setActiveChapterId] = useState(null);
   const [loadProgress, setLoadProgress] = useState({
     phase: '',
     percent: 0,
@@ -166,6 +170,9 @@ export default function EditorPage() {
     setZoomReady(false);
     setSamples(null);
     bufferRef.current = null;
+    setChapters([]);
+    setChaptersDirty(false);
+    setActiveChapterId(null);
     stopAllPlayback();
 
     (async () => {
@@ -177,6 +184,20 @@ export default function EditorPage() {
         if (!cancelled) setDefaultWaveZoom(1);
       } finally {
         if (!cancelled) setZoomReady(true);
+      }
+    })();
+
+    (async () => {
+      try {
+        const data = await api.chapters(path);
+        if (cancelled) return;
+        setChapters(Array.isArray(data.chapters) ? data.chapters : []);
+        setChaptersDirty(false);
+      } catch {
+        if (!cancelled) {
+          setChapters([]);
+          setChaptersDirty(false);
+        }
       }
     })();
 
@@ -690,10 +711,71 @@ export default function EditorPage() {
     }
   }
 
+  function addChapterAt(timeSec) {
+    if (!(duration > 0)) return;
+    const start = Math.min(Math.max(0, timeSec), duration);
+    // Avoid stacking duplicates within 0.15s
+    const near = chapters.some((c) => Math.abs(Number(c.start) - start) < 0.15);
+    if (near) {
+      const existing = chapters.find((c) => Math.abs(Number(c.start) - start) < 0.15);
+      if (existing) setActiveChapterId(existing.id);
+      return;
+    }
+    const id = `ch_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
+    const title = t('editor.chapterDefault', { n: chapters.length + 1 });
+    const next = [...chapters, { id, title, start }].sort((a, b) => a.start - b.start);
+    setChapters(next);
+    setChaptersDirty(true);
+    setActiveChapterId(id);
+    setCursor(start);
+    setPlayhead(start);
+    playheadClockRef.current = start;
+  }
+
+  function updateChapter(id, patch) {
+    setChapters((prev) =>
+      prev
+        .map((c) => (c.id === id ? { ...c, ...patch } : c))
+        .sort((a, b) => Number(a.start) - Number(b.start))
+    );
+    setChaptersDirty(true);
+  }
+
+  function removeChapter(id) {
+    setChapters((prev) => prev.filter((c) => c.id !== id));
+    setChaptersDirty(true);
+    if (activeChapterId === id) setActiveChapterId(null);
+  }
+
+  function selectChapter(id, start) {
+    setActiveChapterId(id);
+    onCursorChange(start);
+  }
+
+  async function saveChapters() {
+    if (!path) return;
+    setChaptersBusy(true);
+    setError('');
+    try {
+      const data = await api.saveChapters(path, chapters, duration);
+      setChapters(Array.isArray(data.chapters) ? data.chapters : chapters);
+      setChaptersDirty(false);
+      setStatus(t('editor.chaptersSaved', { count: (data.chapters || chapters).length }));
+    } catch (err) {
+      setError(err.message || t('editor.chaptersSaveFailed'));
+    } finally {
+      setChaptersBusy(false);
+    }
+  }
+
   async function applyCrop() {
     if (!path) return;
     if (trimStart === 0 && trimEnd === 0) {
       setError(t('editor.needTrim'));
+      return;
+    }
+    if (chaptersDirty) {
+      setError(t('editor.chaptersUnsavedCrop'));
       return;
     }
     stopPlayback();
@@ -713,6 +795,13 @@ export default function EditorPage() {
       await new Promise((r) => setTimeout(r, 200));
       setWaveKey((k) => k + 1);
       setMediaRev(Date.now());
+      try {
+        const ch = await api.chapters(path);
+        setChapters(Array.isArray(ch.chapters) ? ch.chapters : []);
+        setChaptersDirty(false);
+      } catch {
+        /* keep local */
+      }
     } catch (err) {
       setError(err.message);
       setStatus('');
@@ -778,6 +867,10 @@ export default function EditorPage() {
               playheadClockRef={playheadClockRef}
               playing={playing}
               initialZoom={defaultWaveZoom}
+              chapters={chapters}
+              activeChapterId={activeChapterId}
+              onAddChapter={addChapterAt}
+              onSelectChapter={selectChapter}
             />
           )}
 
@@ -799,6 +892,112 @@ export default function EditorPage() {
               <strong>{formatTime(playing ? playhead : cursor)}</strong>
             </div>
           </div>
+
+          <section className="chapters-panel">
+            <div className="chapters-head">
+              <div>
+                <h2>{t('editor.chapters')}</h2>
+                <p className="muted small">{t('editor.chaptersHint')}</p>
+              </div>
+              <div className="chapters-head-actions">
+                <button
+                  type="button"
+                  className="btn secondary"
+                  onClick={() => addChapterAt(playing ? playhead : cursor)}
+                  disabled={!duration || waveLoading}
+                >
+                  {t('editor.chapterAdd')}
+                </button>
+                <button
+                  type="button"
+                  className="btn primary"
+                  onClick={saveChapters}
+                  disabled={chaptersBusy || !chaptersDirty}
+                >
+                  {chaptersBusy ? t('editor.chaptersSaving') : t('editor.chaptersSave')}
+                </button>
+              </div>
+            </div>
+
+            {chapters.length === 0 ? (
+              <p className="muted small chapters-empty">{t('editor.chaptersEmpty')}</p>
+            ) : (
+              <ul className="chapters-list">
+                {chapters.map((ch, i) => (
+                  <li
+                    key={ch.id}
+                    className={`chapters-row${ch.id === activeChapterId ? ' is-active' : ''}`}
+                  >
+                    <button
+                      type="button"
+                      className="chapters-jump"
+                      title={t('editor.chapterJump')}
+                      onClick={() => selectChapter(ch.id, Number(ch.start))}
+                    >
+                      {i + 1}
+                    </button>
+                    <input
+                      className="chapters-time"
+                      type="text"
+                      key={`${ch.id}-${Number(ch.start).toFixed(2)}`}
+                      defaultValue={formatTime(ch.start)}
+                      onBlur={(e) => {
+                        const raw = e.target.value.trim().replace(',', '.');
+                        const parts = raw.split(':');
+                        let sec = NaN;
+                        if (parts.length === 2) {
+                          sec = Number(parts[0]) * 60 + Number(parts[1]);
+                        } else if (parts.length === 3) {
+                          sec =
+                            Number(parts[0]) * 3600 + Number(parts[1]) * 60 + Number(parts[2]);
+                        } else {
+                          sec = Number(raw);
+                        }
+                        if (!Number.isFinite(sec)) {
+                          e.target.value = formatTime(ch.start);
+                          return;
+                        }
+                        const next = Math.min(Math.max(0, sec), Math.max(0, duration));
+                        updateChapter(ch.id, { start: next });
+                        e.target.value = formatTime(next);
+                      }}
+                      onFocus={() => setActiveChapterId(ch.id)}
+                      aria-label={t('editor.chapterTime')}
+                    />
+                    <button
+                      type="button"
+                      className="btn ghost tiny"
+                      title={t('editor.chapterSetCursor')}
+                      onClick={() =>
+                        updateChapter(ch.id, {
+                          start: Math.min(Math.max(0, playing ? playhead : cursor), duration),
+                        })
+                      }
+                    >
+                      ↵
+                    </button>
+                    <input
+                      className="chapters-title"
+                      type="text"
+                      value={ch.title}
+                      onChange={(e) => updateChapter(ch.id, { title: e.target.value })}
+                      onFocus={() => setActiveChapterId(ch.id)}
+                      placeholder={t('editor.chapterTitle')}
+                      aria-label={t('editor.chapterTitle')}
+                    />
+                    <button
+                      type="button"
+                      className="btn ghost tiny"
+                      onClick={() => removeChapter(ch.id)}
+                      aria-label={t('editor.chapterRemove')}
+                    >
+                      ×
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
 
           {(status || error) && (
             <div className="status-row">

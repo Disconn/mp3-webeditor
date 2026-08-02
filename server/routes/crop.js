@@ -7,6 +7,7 @@ import { parseFile } from 'music-metadata';
 import { config } from '../config.js';
 import { resolveAudioPath } from '../paths.js';
 import { refreshMetaCacheFor } from './tags.js';
+import { shiftChaptersForCrop } from './chapters.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const TMP_DIR = path.join(__dirname, '..', 'tmp');
@@ -133,9 +134,11 @@ export async function cropMp3(req, res) {
     }
 
     // Re-apply ID3 tags from original (ffmpeg sometimes drops artwork)
+    // and shift chapter times to the cropped timeline
     const tags = NodeID3.read(filePath);
     if (tags) {
-      NodeID3.write(tags, tmpOut);
+      const adjusted = shiftChaptersForCrop(tags, start, keepDuration);
+      NodeID3.write(adjusted, tmpOut);
     }
 
     if (inPlace) {
