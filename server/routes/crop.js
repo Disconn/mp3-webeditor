@@ -186,11 +186,110 @@ export async function cropMp3(req, res) {
   }
 }
 
+/**
+ * Stream original file (byte-range) OR a sync-friendly CBR re-encode.
+ *
+ * VBR MP3 + HTMLAudio drifts vs sample-accurate peaks (known browser limitation).
+ * sync=1 pipes ffmpeg CBR from optional ss= so editor playhead matches peak timeline.
+ */
 export async function streamAudio(req, res) {
   try {
     const filePath = resolveAudioPath(req.query.path);
     if (!fs.existsSync(filePath)) {
       return res.status(404).json({ error: 'File not found' });
+    }
+
+    const sync =
+      req.query.sync === '1' || req.query.sync === 'true' || req.query.sync === 'cbr';
+    const ss = Math.max(0, Number(req.query.ss) || 0);
+
+    if (sync) {
+      res.setHeader('Content-Type', 'audio/mpeg');
+      res.setHeader('Accept-Ranges', 'none');
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+      res.setHeader('Pragma', 'no-cache');
+      res.setHeader('Expires', '0');
+
+      const args = ['-hide_banner', '-nostats', '-loglevel', 'error'];
+      // Input seek: fast start on long files; CBR output removes VBR timing drift
+      if (ss > 0.001) args.push('-ss', ss.toFixed(3));
+      args.push(
+        '-i',
+        filePath,
+        '-map',
+        '0:a:0',
+        '-vn',
+        '-c:a',
+        'libmp3lame',
+        '-b:a',
+        '192k',
+        '-ac',
+        '2',
+        '-ar',
+        '44100',
+        '-write_xing',
+        '1',
+        '-f',
+        'mp3',
+        'pipe:1'
+      );
+
+      const proc = spawn(config.ffmpegPath, args, {
+        windowsHide: true,
+        stdio: ['ignore', 'pipe', 'pipe'],
+      });
+
+      let stderr = '';
+      let settled = false;
+
+      function fail(err) {
+        if (settled) return;
+        settled = true;
+        try {
+          proc.kill('SIGKILL');
+        } catch {
+          /* ignore */
+        }
+        if (!res.headersSent) {
+          res.status(500).json({ error: err.message || String(err) });
+        } else {
+          res.destroy(err);
+        }
+      }
+
+      proc.stderr.on('data', (d) => {
+        stderr += d.toString();
+        if (stderr.length > 4000) stderr = stderr.slice(-2000);
+      });
+      proc.on('error', (err) => fail(err));
+      proc.on('close', (code) => {
+        if (settled) return;
+        settled = true;
+        if (code && code !== 0 && !res.writableEnded) {
+          if (!res.headersSent) {
+            res.status(500).json({
+              error: `ffmpeg stream failed (${code}): ${stderr.slice(-400)}`,
+            });
+          } else {
+            res.destroy();
+          }
+        } else if (!res.writableEnded) {
+          res.end();
+        }
+      });
+
+      req.on('close', () => {
+        if (settled) return;
+        settled = true;
+        try {
+          proc.kill('SIGKILL');
+        } catch {
+          /* ignore */
+        }
+      });
+
+      proc.stdout.pipe(res);
+      return;
     }
 
     const stat = fs.statSync(filePath);

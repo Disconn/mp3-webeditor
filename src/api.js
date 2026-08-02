@@ -84,8 +84,11 @@ export const api = {
       headers: JSON_HEADERS,
       body: JSON.stringify({ path, trimStart, trimEnd, inPlace: true }),
     }).then(parse),
-  streamUrl: (path, bust) => {
-    const q = `path=${encodeURIComponent(path)}${bust ? `&t=${bust}` : ''}`;
+  streamUrl: (path, bust, opts = {}) => {
+    const q = new URLSearchParams({ path });
+    if (bust) q.set('t', String(bust));
+    if (opts.sync) q.set('sync', '1');
+    if (opts.ss != null && Number(opts.ss) > 0) q.set('ss', String(Number(opts.ss)));
     return `/api/audio/stream?${q}`;
   },
   settings: () => fetch('/api/settings', { credentials: 'include' }).then(parse),

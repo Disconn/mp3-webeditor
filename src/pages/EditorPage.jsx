@@ -58,6 +58,8 @@ export default function EditorPage() {
   const sourceRef = useRef(null);
   const playOriginRef = useRef({ ctxTime: 0, offset: 0 });
   const audioRef = useRef(null);
+  /** Wave time where the current CBR sync-stream starts (element mode). */
+  const streamStartRef = useRef(0);
   const playingRef = useRef(false);
   const playheadClockRef = useRef(0);
   const durationRef = useRef(0);
@@ -100,6 +102,49 @@ export default function EditorPage() {
     const el = audioRef.current;
     if (!el) return;
     el.pause();
+    // Abort ffmpeg CBR pipe (otherwise it keeps encoding the whole file)
+    const src = el.getAttribute('src') || '';
+    if (src.includes('sync=1')) {
+      try {
+        el.removeAttribute('src');
+        el.load();
+      } catch {
+        /* ignore */
+      }
+    }
+  }
+
+  /** CBR ffmpeg stream URL — avoids VBR/HTMLAudio drift vs peak timeline. */
+  function syncStreamUrl(startSec) {
+    return api.streamUrl(path, mediaRev || undefined, {
+      sync: true,
+      ss: Math.max(0, startSec || 0),
+    });
+  }
+
+  function elementWaveTime() {
+    const el = audioRef.current;
+    if (!el) return streamStartRef.current;
+    return streamStartRef.current + (el.currentTime || 0);
+  }
+
+  async function playElementFrom(startSec) {
+    const start = Math.min(Math.max(0, startSec), Math.max(0, durationRef.current - 0.02));
+    const el = ensureAudioEl();
+    const url = syncStreamUrl(start);
+    streamStartRef.current = start;
+    el.src = url;
+    try {
+      el.load();
+    } catch {
+      /* ignore */
+    }
+    el.currentTime = 0;
+    await el.play();
+    playheadClockRef.current = start;
+    setPlayhead(start);
+    playingRef.current = true;
+    setPlaying(true);
   }
 
   function stopAllPlayback() {
@@ -350,10 +395,8 @@ export default function EditorPage() {
         overview,
       });
 
-      // Prefetch stream so play/seek are ready; timeline stays on ffmpeg peak clock
-      // (do not stretch peaks to HTMLAudio.duration — VBR headers are often wrong).
-      const el = ensureAudioEl();
-      el.src = streamUrl;
+      // Element mode plays via sync CBR stream (started on Play) — same clock as peaks.
+      streamStartRef.current = 0;
 
       setCursor(0);
       setPlayhead(0);
@@ -460,14 +503,15 @@ export default function EditorPage() {
       } else {
         const el = audioRef.current;
         if (el) {
-          const tNow = el.currentTime || 0;
-          if (el.ended) {
+          const tNow = Math.min(durationRef.current || Infinity, Math.max(0, elementWaveTime()));
+          if (el.ended || (durationRef.current > 0 && tNow >= durationRef.current - 0.05)) {
             playingRef.current = false;
             const endT = durationRef.current || tNow;
             playheadClockRef.current = endT;
             setPlaying(false);
             setPlayhead(endT);
             setCursor(endT);
+            stopAudioOnly();
           } else {
             playheadClockRef.current = tNow;
             if (now - lastUi > 50) {
@@ -521,15 +565,8 @@ export default function EditorPage() {
       return;
     }
 
-    const el = ensureAudioEl();
     try {
-      if (el.getAttribute('src') !== streamUrl) el.src = streamUrl;
-      el.currentTime = start;
-      await el.play();
-      playheadClockRef.current = start;
-      setPlayhead(start);
-      playingRef.current = true;
-      setPlaying(true);
+      await playElementFrom(start);
     } catch (err) {
       setError(err.message || t('editor.audioCtxFailed'));
       playingRef.current = false;
@@ -547,7 +584,7 @@ export default function EditorPage() {
           tNow = Math.min(duration, Math.max(0, offset + (ctx.currentTime - ctxTime)));
         }
       } else if (audioRef.current) {
-        tNow = Math.min(duration, Math.max(0, audioRef.current.currentTime || 0));
+        tNow = Math.min(duration, Math.max(0, elementWaveTime()));
       }
     }
     stopAllPlayback();
@@ -631,10 +668,22 @@ export default function EditorPage() {
       return;
     }
 
+    if (playingRef.current) {
+      playElementFrom(next).catch((err) => {
+        setError(err.message || t('editor.audioCtxFailed'));
+        playingRef.current = false;
+        setPlaying(false);
+      });
+      return;
+    }
+
+    streamStartRef.current = next;
     const el = audioRef.current;
     if (el) {
       try {
-        el.currentTime = next;
+        el.pause();
+        el.removeAttribute('src');
+        el.load();
       } catch {
         /* ignore */
       }
